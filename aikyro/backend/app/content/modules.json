@@ -1,0 +1,119 @@
+{
+  "_notes": "Edit this file, not the code, when the client changes content scope, concept lists, Bloom targets, or the comparative-evaluation pairing. Pairing below matches HLD v2.5 Section 6.4 and the D-03 decision-log entry (Section 16): Bloom-tier matching within a module. D-03 is still OPEN as of v2.5 pending a TA/instructor 'equally hard to a first-year' check on each pair -- flip difficulty_reviewed to true per pair once that happens (see app.content.loader.mark_pair_reviewed / POST /topics/pairs/{pair_id}/mark-reviewed). Two concepts are Understand/Analyse-only within their module and are intentionally excluded from graded_pairs -> they go in general_use_only.",
+  "modules": [
+    {
+      "id": "thermodynamics",
+      "name": "Thermodynamics",
+      "concepts": [
+        {
+          "id": "first_law_energy_accounting",
+          "name": "First law and energy accounting",
+          "bloom_level": "apply"
+        },
+        {
+          "id": "sign_conventions_work_heat",
+          "name": "Sign conventions for work and heat",
+          "bloom_level": "apply"
+        },
+        {
+          "id": "reversible_irreversible_processes",
+          "name": "Reversible/irreversible processes",
+          "bloom_level": "analyse"
+        },
+        {
+          "id": "entropy_universe_spontaneous",
+          "name": "Entropy of the universe in a spontaneous process",
+          "bloom_level": "analyse"
+        },
+        {
+          "id": "second_law_and_entropy",
+          "name": "Second law and entropy",
+          "bloom_level": "understand"
+        }
+      ]
+    },
+    {
+      "id": "probability_stats",
+      "name": "Probability & Statistics",
+      "concepts": [
+        {
+          "id": "conditional_probability",
+          "name": "Conditional probability",
+          "bloom_level": "understand"
+        },
+        {
+          "id": "independence_vs_mutual_exclusivity",
+          "name": "Independence vs. mutual exclusivity",
+          "bloom_level": "understand"
+        },
+        {
+          "id": "base_rates_and_bayes",
+          "name": "Base rates and Bayes",
+          "bloom_level": "apply"
+        },
+        {
+          "id": "sampling_distributions_standard_error",
+          "name": "Sampling distributions and standard error",
+          "bloom_level": "apply"
+        },
+        {
+          "id": "correlation_and_causation_fitted_model",
+          "name": "Correlation and causation in a fitted model",
+          "bloom_level": "analyse"
+        }
+      ]
+    }
+  ],
+  "graded_pairs": [
+    {
+      "pair_id": "thermo_apply_1",
+      "module_id": "thermodynamics",
+      "bloom_level": "apply",
+      "concept_a": "first_law_energy_accounting",
+      "concept_b": "sign_conventions_work_heat",
+      "difficulty_reviewed": false
+    },
+    {
+      "pair_id": "thermo_analyse_1",
+      "module_id": "thermodynamics",
+      "bloom_level": "analyse",
+      "concept_a": "reversible_irreversible_processes",
+      "concept_b": "entropy_universe_spontaneous",
+      "difficulty_reviewed": false
+    },
+    {
+      "pair_id": "stats_understand_1",
+      "module_id": "probability_stats",
+      "bloom_level": "understand",
+      "concept_a": "conditional_probability",
+      "concept_b": "independence_vs_mutual_exclusivity",
+      "difficulty_reviewed": false
+    },
+    {
+      "pair_id": "stats_apply_1",
+      "module_id": "probability_stats",
+      "bloom_level": "apply",
+      "concept_a": "base_rates_and_bayes",
+      "concept_b": "sampling_distributions_standard_error",
+      "difficulty_reviewed": false
+    }
+  ],
+  "general_use_only": [
+    "second_law_and_entropy",
+    "correlation_and_causation_fitted_model"
+  ],
+  "personas": {
+    "teacher": {
+      "role": "establishes the definition",
+      "bloom_target": "remember"
+    },
+    "basic_student": {
+      "role": "forces the definition into other words; asks questions a self-conscious learner would suppress",
+      "bloom_target": "understand"
+    },
+    "advanced_student": {
+      "role": "introduces a worked situation, then probes boundaries and edge cases",
+      "bloom_target": "apply_analyse"
+    }
+  }
+}
