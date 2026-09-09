@@ -34,6 +34,25 @@ HLD changes.
   ready. Mic permission or transcription failures always fall back to a
   clear message telling the learner to type instead — voice is never a
   hard blocker, per HLD 10.6's degradation requirement.
+- **Voice Q&A** — separate from the teach-back scoring above: the question
+  box in the Classroom has a mic button (Web Speech API `SpeechRecognition`,
+  client-side, no backend round trip) so you can *ask* a question by voice,
+  and a "Read aloud" toggle that has the browser's speech synthesis speak
+  each AI turn as it streams in (plus a per-message speaker icon to replay
+  any single line). Both degrade silently to text-only in browsers that
+  don't support the Web Speech API (Safari mostly) — the mic/toggle simply
+  don't render.
+- **Points & badges** — real, not stubbed: checkpoints (+10), retention
+  checks (+15), transfer problems (+20), and closing a doubt (+5) all award
+  points server-side; a small badge catalog (`measurement_service.
+  BADGE_CATALOG`) awards on milestones (first checkpoint, 5 questions asked,
+  3 retentions passed, first transfer solved). Per HLD 13.1, nothing is
+  awarded for revealing a hint or for time spent.
+- **Retention checks & transfer problems now have a screen** — `/quizzes`
+  lists what's due. Transfer problems are available immediately after a
+  checkpoint pass; retention checks unlock only on their scheduled date
+  (backend enforces this — HLD 6.6 "never on the day the concept was
+  learned"). A passed transfer problem also bumps the recorded Bloom level.
 - **Open-topic exploration** — `POST /classroom/start-freeform` (Topic
   Setup screen: "Ask about anything") lets a learner type any topic, not
   just the pilot's fixed concept list. This runs the same teacher/student
@@ -55,7 +74,7 @@ mock` — you can run it today with zero API keys.
 | Disagreement detection / adjudication | `backend/app/services/verification_engine.py` | naive string-diff placeholder, not semantic |
 | Answer scoring | `backend/app/routers/checkpoint.py` | checks non-empty, not correctness — replace with real grading against the verified record |
 | Real speech models | `backend/app/services/speech_signal_service.py` | mock transcript/timing — wire in after the D1 spike; UI/recording already works |
-| Points/badges | `backend/app/routers/progress.py` | scoring rules not finalized in HLD yet |
+| Points/badges | ~~`backend/app/routers/progress.py`~~ | done — real point values and a small badge catalog, see `measurement_service.py` |
 | Comparative report aggregation | `backend/app/services/measurement_service.py::comparative_report` | needs real queries once pilot data exists |
 | Voice capture UI | ~~`frontend/src/pages/Classroom.tsx`~~ | done — records via `MediaRecorder`, submits, shows score |
 
@@ -107,3 +126,22 @@ Runs on http://localhost:5173, points at the backend on :8000
 3. Replace placeholder scoring/adjudication with real logic.
 4. Wire a real LLM provider and flip `llm_mode` to `"live"`.
 5. Move off SQLite to managed Postgres for anything beyond local dev.
+
+## Design system
+
+Sidebar app shell (not a top-nav SaaS layout), cobalt/ink/amber palette,
+Source Serif 4 for headings + Inter for body — see `tailwind.config.js` for
+the token names (`cobalt`, `amber`, `ink`, `paper`, plus the four persona
+colors `teacher`/`basic`/`advanced`/`learner`). Change the palette there,
+not by hunting for hex codes across components.
+
+## Still-honest gaps (not built)
+
+- **Accessibility (HLD §11.2)** — no WCAG pass done; keyboard nav mostly
+  works because it's plain semantic HTML, but nothing's been audited.
+- **Offline graceful-failure (HLD §11.6)** — a dropped connection currently
+  just errors out, no retry/resync.
+- **Real answer grading** — checkpoints and quizzes still pass on any
+  non-empty answer. This is the most load-bearing remaining stub: it's what
+  makes the whole "verified knowledge, real assessment" story fake right now.
+- **Real multi-agent adjudication** — still a placeholder, see the table above.

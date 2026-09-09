@@ -14,6 +14,7 @@ class UserOut(BaseModel):
     email: str
     pilot_pair_id: str | None = None
     pilot_condition_map: dict | None = None
+    total_points: int = 0
 
     class Config:
         from_attributes = True
@@ -88,3 +89,31 @@ class DoubtOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PendingQuizOut(BaseModel):
+    id: str
+    concept_id: str
+    quiz_type: str
+    prompt: str | None
+    scheduled_for: datetime
+    available_now: bool
+
+
+class QuizSubmitRequest(BaseModel):
+    answer: str
+
+
+class QuizSubmitResponse(BaseModel):
+    passed: bool
+    score: float
+    points_awarded: int
+    newly_awarded_badges: list[str] = []
+
+
+class BadgeOut(BaseModel):
+    code: str
+    label: str
+    emoji: str
+    description: str
+    awarded_at: datetime

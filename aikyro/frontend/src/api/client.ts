@@ -100,6 +100,13 @@ export const api = {
 
   getProgress: () => request('/progress/me'),
 
+  getPendingQuizzes: () => request('/progress/quizzes/pending'),
+
+  submitQuiz: (quizId: string, answer: string) =>
+    request(`/progress/quizzes/${quizId}/submit`, { method: 'POST', body: JSON.stringify({ answer }) }),
+
+  closeDoubt: (doubtId: string) => request(`/progress/doubts/${doubtId}/close`, { method: 'POST' }),
+
   submitVoiceClip: (sessionId: string, blob: Blob) => {
     const form = new FormData()
     form.append('file', blob, 'clip.webm')

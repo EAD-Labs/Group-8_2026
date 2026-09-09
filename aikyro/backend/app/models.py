@@ -62,9 +62,25 @@ class User(Base):
     pilot_condition_map: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # e.g. {"first_law_energy_accounting": "platform", "sign_conventions_work_heat": "plain_chat"}
 
+    # HLD 13.1: points/badges, never awarded for revealing an answer or time spent
+    total_points: Mapped[int] = mapped_column(Integer, default=0)
+
     sessions: Mapped[list["LearningSession"]] = relationship(back_populates="user")
     mastery_records: Mapped[list["MasteryRecord"]] = relationship(back_populates="user")
     doubt_log_entries: Mapped[list["DoubtLogEntry"]] = relationship(back_populates="user")
+    badges: Mapped[list["Badge"]] = relationship(back_populates="user")
+
+
+class Badge(Base):
+    """Awarded milestones (HLD 13.1). See measurement_service.BADGE_CATALOG for definitions."""
+    __tablename__ = "badges"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
+    badge_code: Mapped[str] = mapped_column(String, index=True)
+    awarded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="badges")
 
 
 class VerifiedKnowledgeRecord(Base):
@@ -152,6 +168,8 @@ class QuizResult(Base):
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
     concept_id: Mapped[str] = mapped_column(String, index=True)
     quiz_type: Mapped[str] = mapped_column(String)  # retention | transfer
+    prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     scheduled_for: Mapped[datetime] = mapped_column(DateTime)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

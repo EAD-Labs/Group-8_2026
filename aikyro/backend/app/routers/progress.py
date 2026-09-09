@@ -1,10 +1,16 @@
-from fastapi import APIRouter, Depends
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import User, MasteryRecord, DoubtLogEntry, QuizResult
-from app.services.measurement_service import comparative_report
+from app.models import User, MasteryRecord, DoubtLogEntry, QuizResult, Badge
+from app.schemas import PendingQuizOut, QuizSubmitRequest, QuizSubmitResponse
+from app.services.measurement_service import (
+    comparative_report, record_retention_result, record_transfer_result,
+    close_doubt as close_doubt_service, BADGE_CATALOG, POINTS, _check_badges,
+)
 
 router = APIRouter(prefix="/progress", tags=["progress"])
 
@@ -14,8 +20,6 @@ def my_progress(db: DBSession = Depends(get_db), user: User = Depends(get_curren
     """
     Screen 2 data (HLD 9.3): per-concept state + target Bloom level, open
     doubts in plain language, next scheduled delayed check, points/badges.
-    Points/badges are stubbed — wire in once the gamification rules
-    (HLD 6.6: "never for revealing an answer or time spent") are finalised.
     """
     mastery = db.query(MasteryRecord).filter_by(user_id=user.id).all()
     open_doubts = db.query(DoubtLogEntry).filter_by(user_id=user.id, closed=False).all()
@@ -25,6 +29,7 @@ def my_progress(db: DBSession = Depends(get_db), user: User = Depends(get_curren
         .order_by(QuizResult.scheduled_for)
         .all()
     )
+    badges = db.query(Badge).filter_by(user_id=user.id).order_by(Badge.awarded_at).all()
 
     return {
         "mastery": [
@@ -42,12 +47,87 @@ def my_progress(db: DBSession = Depends(get_db), user: User = Depends(get_curren
         ],
         "pending_retention_checks": [
             {"concept_id": q.concept_id, "scheduled_for": q.scheduled_for.isoformat()}
-            for q in pending_quizzes
+            for q in pending_quizzes if q.quiz_type == "retention"
         ],
-        # points/badges: not yet implemented, see note above
-        "points": None,
-        "badges": [],
+        "points": user.total_points,
+        "badges": [
+            {
+                "code": b.badge_code,
+                "label": BADGE_CATALOG.get(b.badge_code, {}).get("label", b.badge_code),
+                "emoji": BADGE_CATALOG.get(b.badge_code, {}).get("emoji", "🏅"),
+                "description": BADGE_CATALOG.get(b.badge_code, {}).get("description", ""),
+                "awarded_at": b.awarded_at.isoformat(),
+            }
+            for b in badges
+        ],
     }
+
+
+@router.get("/quizzes/pending", response_model=list[PendingQuizOut])
+def pending_quizzes(db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """
+    Retention checks + transfer problems not yet completed. Retention checks
+    aren't takeable until their scheduled date (HLD 6.6: never on the day the
+    concept was learned); transfer problems are available immediately.
+    """
+    quizzes = (
+        db.query(QuizResult)
+        .filter_by(user_id=user.id, completed_at=None)
+        .order_by(QuizResult.scheduled_for)
+        .all()
+    )
+    now = datetime.utcnow()
+    return [
+        PendingQuizOut(
+            id=q.id,
+            concept_id=q.concept_id,
+            quiz_type=q.quiz_type,
+            prompt=q.prompt,
+            scheduled_for=q.scheduled_for,
+            available_now=q.scheduled_for <= now,
+        )
+        for q in quizzes
+    ]
+
+
+@router.post("/quizzes/{quiz_id}/submit", response_model=QuizSubmitResponse)
+def submit_quiz(
+    quiz_id: str, payload: QuizSubmitRequest, db: DBSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    quiz = db.query(QuizResult).filter_by(id=quiz_id, user_id=user.id).first()
+    if not quiz:
+        raise HTTPException(404, "Quiz not found")
+    if quiz.completed_at:
+        raise HTTPException(400, "Already completed")
+    if quiz.scheduled_for > datetime.utcnow():
+        raise HTTPException(400, "Not available yet — retention checks unlock on their scheduled date")
+
+    # Placeholder grading, same honest limitation as the checkpoint endpoint:
+    # non-empty answer passes. Replace with real grading against the
+    # verified record once live LLM grading is wired in.
+    answer = payload.answer.strip()
+    score = 1.0 if answer else 0.0
+    passed = bool(answer)
+
+    points_before = user.total_points or 0
+    if quiz.quiz_type == "retention":
+        record_retention_result(db, quiz, passed, score, answer)
+    else:
+        record_transfer_result(db, quiz, passed, score, answer)
+
+    db.refresh(user)
+    points_awarded = (user.total_points or 0) - points_before
+    newly_awarded = _check_badges(db, user.id) if passed else []
+
+    return QuizSubmitResponse(passed=passed, score=score, points_awarded=points_awarded, newly_awarded_badges=newly_awarded)
+
+
+@router.post("/doubts/{doubt_id}/close")
+def close_doubt(doubt_id: str, db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
+    entry = close_doubt_service(db, doubt_id)
+    if not entry or entry.user_id != user.id:
+        raise HTTPException(404, "Doubt not found")
+    return {"id": entry.id, "closed": entry.closed}
 
 
 @router.get("/comparative-report")
