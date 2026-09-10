@@ -2,26 +2,63 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import get_current_user
 from app.content.loader import (
-    content_review_status, d03_status, load_content, mark_content_reviewed,
-    mark_pair_reviewed, public_modules,
+    content_review_status, d03_status, list_custom_modules, load_content,
+    mark_content_reviewed, mark_pair_reviewed, public_modules, save_custom_module,
 )
 from app.models import User
+from app.schemas import CustomModuleCreateRequest, ModuleOut
+from app.services.module_generation_service import generate_custom_module
 
 router = APIRouter(prefix="/topics", tags=["topics"])
 
 
 @router.get("/modules")
 def list_modules(user: User = Depends(get_current_user)):
-    """Dashboard / Topic Setup screen data (HLD 9.1-9.2)."""
+    """
+    Dashboard / Topic Setup screen data (HLD 9.1-9.2). Two fixed pilot
+    modules (Thermodynamics, Probability & Statistics — HLD 6.4 sample
+    modules) plus whatever custom modules this learner has generated for
+    themselves (HLD 6.4 extension path).
+    """
     # public_modules() strips each concept's blanks (expected answers) and
     # checkpoint rubrics. Returning content["modules"] raw would ship every
     # blank's accepted answers to the browser, which would make the blank gate
     # and the checkpoint decorative.
+    sample_modules = [{**m, "is_custom": False, "topic_description": None, "sources": []} for m in public_modules()]
+    custom_modules = list_custom_modules(user.id)
     return {
-        "modules": public_modules(),
+        "modules": sample_modules + custom_modules,
         "pilot_pair_id": user.pilot_pair_id,
         "pilot_condition_map": user.pilot_condition_map,
     }
+
+
+@router.post("/custom-modules", response_model=ModuleOut)
+async def create_custom_module(
+    payload: CustomModuleCreateRequest, user: User = Depends(get_current_user)
+):
+    """
+    Learner describes a topic; the model researches it (HLD 6.4: "a module
+    is a list of concepts with Bloom targets ... the verification engine
+    generates everything else") and the result is saved to this learner's
+    own account only — never shared modules.json, never visible to other
+    learners.
+    """
+    topic = payload.topic.strip()
+    if not topic:
+        raise HTTPException(400, "Describe a topic first.")
+    if len(topic) > 300:
+        raise HTTPException(400, "Keep the topic description under 300 characters.")
+
+    generated = await generate_custom_module(topic)
+    module = save_custom_module(
+        user_id=user.id,
+        name=generated["name"],
+        topic_description=topic,
+        concepts=generated["concepts"],
+        sources=generated["sources"],
+    )
+    return module
 
 
 @router.get("/d03-status")

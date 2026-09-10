@@ -78,6 +78,11 @@ export const api = {
 
   getContentReviewStatus: () => request('/topics/content-review-status'),
 
+  createCustomModule: (topic: string) =>
+    request('/topics/custom-modules', { method: 'POST', body: JSON.stringify({ topic }) }),
+
+  getQuestionHistory: () => request('/classroom/questions'),
+
   // `dialogueMode` 'reduced' suppresses the basic-student persona (HLD T2.7).
   startSession: (conceptId: string, dialogueMode: DialogueMode = 'full') =>
     request('/classroom/start', {

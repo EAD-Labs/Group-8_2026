@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, BookOpen, TrendingUp, Settings, Info, LogOut, Sparkles, ChevronDown, ClipboardCheck } from 'lucide-react'
+import { LayoutDashboard, BookOpen, TrendingUp, Settings, Info, LogOut, Sparkles, ChevronDown, ClipboardCheck, MessageCircleQuestion } from 'lucide-react'
 import { api, clearToken } from '../api/client'
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/topic-setup', label: 'Modules', icon: BookOpen },
   { to: '/quizzes', label: 'Quizzes', icon: ClipboardCheck },
+  { to: '/questions', label: 'Questions', icon: MessageCircleQuestion },
   { to: '/progress', label: 'Progress', icon: TrendingUp },
 ]
 

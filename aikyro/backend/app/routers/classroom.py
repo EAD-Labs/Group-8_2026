@@ -42,8 +42,8 @@ from app.models import (
 )
 from app.schemas import (
     BlankAttemptRequest, BlankAttemptResponse, HintRevealResponse, InteractionEventIn,
-    LearnerQuestionRequest, StartFreeformSessionRequest, StartSessionRequest, StartSessionResponse,
-    StreamTicketResponse,
+    LearnerQuestionRequest, QuestionHistoryItem, StartFreeformSessionRequest,
+    StartSessionRequest, StartSessionResponse, StreamTicketResponse,
 )
 from app.services.dialogue_orchestrator import build_dialogue, insert_learner_question
 from app.services.measurement_service import log_doubt, open_doubt_ids
@@ -52,6 +52,60 @@ from app.services.verification_engine import (
 )
 
 router = APIRouter(prefix="/classroom", tags=["classroom"])
+
+
+@router.get("/questions", response_model=list[QuestionHistoryItem])
+def question_history(db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """
+    Every question the learner has asked as the third student, across every
+    session, most recent first — with the teacher's answer alongside it, so
+    it's actually reviewable rather than a name in a list (this is the
+    'history of questions asked to the teacher' from Screen 1, HLD 9.3/5.1
+    step 5, surfaced somewhere the learner can revisit it and open the
+    session it came from).
+    """
+    questions = (
+        db.query(DialogueTurn, LearningSession)
+        .join(LearningSession, DialogueTurn.session_id == LearningSession.id)
+        .filter(LearningSession.user_id == user.id, DialogueTurn.turn_type == "learner_question")
+        .order_by(DialogueTurn.created_at.desc())
+        .all()
+    )
+    if not questions:
+        return []
+
+    session_ids = {session.id for _, session in questions}
+    all_turns = (
+        db.query(DialogueTurn)
+        .filter(DialogueTurn.session_id.in_(session_ids))
+        .order_by(DialogueTurn.turn_index)
+        .all()
+    )
+
+    # Build a map: for each question turn, find the next teacher turn in the same session
+    turns_by_session: dict[str, list] = {}
+    for t in all_turns:
+        turns_by_session.setdefault(t.session_id, []).append(t)
+
+    result = []
+    for question_turn, session in questions:
+        answer_text = None
+        session_turns = turns_by_session.get(session.id, [])
+        for t in session_turns:
+            if t.turn_index > question_turn.turn_index and t.turn_type == "teacher":
+                answer_text = t.content
+                break
+
+        result.append(QuestionHistoryItem(
+            session_id=session.id,
+            turn_id=question_turn.id,
+            concept_id=session.concept_id or "",
+            concept_name=session.topic_name or session.concept_id or "",
+            question=question_turn.content or "",
+            answer=answer_text,
+            asked_at=question_turn.created_at,
+        ))
+    return result
 
 
 def _owned_session(db: DBSession, session_id: str, user: User) -> LearningSession:

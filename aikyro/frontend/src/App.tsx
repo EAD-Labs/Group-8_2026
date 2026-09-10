@@ -7,6 +7,7 @@ import PlainChat from './pages/PlainChat'
 import Checkpoint from './pages/Checkpoint'
 import Progress from './pages/Progress'
 import Quizzes from './pages/Quizzes'
+import QuestionHistory from './pages/QuestionHistory'
 import Settings from './pages/Settings'
 import About from './pages/About'
 
@@ -93,6 +94,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <About />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/questions"
+          element={
+            <ProtectedRoute>
+              <QuestionHistory />
             </ProtectedRoute>
           }
         />
