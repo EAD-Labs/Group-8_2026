@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Mic, Square, Send, Volume2, VolumeX, ArrowRight, Loader2,
-  GraduationCap, BookOpen, Brain, User, Hand, HelpCircle,
+  GraduationCap, BookOpen, Brain, User, Hand,
 } from 'lucide-react'
 import NavShell from '../components/NavShell'
 import { api } from '../api/client'
@@ -19,10 +19,10 @@ const PERSONA: Record<
   string,
   { label: string; icon: typeof GraduationCap; bg: string; text: string; border: string }
 > = {
-  teacher: { label: 'Teacher', icon: GraduationCap, bg: 'bg-teacher', text: 'text-teacher', border: 'border-teacher/25' },
-  basic_student: { label: 'Basic Student', icon: BookOpen, bg: 'bg-basic', text: 'text-basic', border: 'border-basic/25' },
-  advanced_student: { label: 'Advanced Student', icon: Brain, bg: 'bg-advanced', text: 'text-advanced', border: 'border-advanced/25' },
-  learner: { label: 'You', icon: User, bg: 'bg-learner', text: 'text-learner', border: 'border-learner/25' },
+  teacher: { label: 'Teacher', icon: GraduationCap, bg: 'bg-teacher', text: 'text-teacher', border: 'border-teacher/30' },
+  basic_student: { label: 'Basic Student', icon: BookOpen, bg: 'bg-basic', text: 'text-basic', border: 'border-basic/30' },
+  advanced_student: { label: 'Advanced Student', icon: Brain, bg: 'bg-advanced', text: 'text-advanced', border: 'border-advanced/30' },
+  learner: { label: 'You', icon: User, bg: 'bg-learner', text: 'text-learner', border: 'border-learner/30' },
 }
 
 // Web Speech API isn't in default TS lib types — minimal ambient declarations.
@@ -51,14 +51,86 @@ declare global {
   }
 }
 
-function Avatar({ speaker, size = 'md' }: { speaker: string; size?: 'sm' | 'md' | 'lg' }) {
-  const meta = PERSONA[speaker] || PERSONA.teacher
-  const Icon = meta.icon
-  const dims = size === 'lg' ? 'w-14 h-14' : size === 'sm' ? 'w-8 h-8' : 'w-11 h-11'
-  const iconSize = size === 'lg' ? 24 : size === 'sm' ? 15 : 19
+function SpeechBubble({ text, color }: { text: string; color: string }) {
   return (
-    <div className={`${dims} rounded-full ${meta.bg} text-white flex items-center justify-center shadow-sm shrink-0`}>
-      <Icon size={iconSize} />
+    <div className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full w-44 z-30 animate-[fadeIn_0.2s_ease-out]">
+      <div className={`bg-white border-2 ${color} rounded-xl px-3 py-2 shadow-lg text-[11px] text-ink leading-snug`}>
+        {text}
+      </div>
+      <div className={`w-3 h-3 bg-white border-r-2 border-b-2 ${color} rotate-45 mx-auto -mt-[7px]`} />
+    </div>
+  )
+}
+
+function Shadow({ width = 'w-14' }: { width?: string }) {
+  return <div className={`${width} h-2 bg-black/10 rounded-full mx-auto blur-[2px] mt-0.5`} />
+}
+
+const HAIR_TONES = ['#5B4636', '#2E2A28', '#8A6642', '#3D3D3D', '#6B4A38']
+
+function GenericFigure({ seed = 0 }: { seed?: number }) {
+  const hair = HAIR_TONES[seed % HAIR_TONES.length]
+  return (
+    <div className="flex flex-col items-center opacity-40 scale-90">
+      <div className="relative">
+        <div className="w-6 h-6 rounded-full bg-[#D9B99B]" />
+        <div
+          className="absolute -top-1 left-0 right-0 h-3 rounded-t-full"
+          style={{ backgroundColor: hair }}
+        />
+      </div>
+      <div className="w-9 h-6 bg-slate-400 rounded-t-xl -mt-0.5" />
+      <div className="w-12 h-2 rounded-sm mt-0.5" style={{ backgroundColor: '#8B5E34', opacity: 0.5 }} />
+      <Shadow width="w-10" />
+    </div>
+  )
+}
+
+function StudentDesk({
+  persona,
+  speaking,
+  speechText,
+  calledOn,
+}: {
+  persona: 'basic_student' | 'advanced_student' | 'learner'
+  speaking: boolean
+  speechText?: string
+  calledOn?: boolean
+}) {
+  const meta = PERSONA[persona]
+  const Icon = meta.icon
+  const active = speaking || calledOn
+  return (
+    <div className="flex flex-col items-center relative">
+      {speaking && speechText && <SpeechBubble text={speechText} color={meta.border} />}
+
+      <div
+        className={`relative flex flex-col items-center transition-transform duration-300 ${
+          active ? '-translate-y-1.5 scale-105' : ''
+        }`}
+      >
+        {calledOn && <span className={`absolute -inset-2 rounded-full border-2 ${meta.border} animate-ping`} />}
+        {speaking && (
+          <Hand size={12} className={`absolute -right-2 -top-1 ${meta.text} rotate-12 z-10`} strokeWidth={2.5} />
+        )}
+
+        {/* simple arms, resting on the desk */}
+        <div className={`absolute top-9 -left-1.5 w-2.5 h-4 rounded-full ${meta.bg} opacity-80 rotate-[18deg]`} />
+        <div className={`absolute top-9 -right-1.5 w-2.5 h-4 rounded-full ${meta.bg} opacity-80 -rotate-[18deg]`} />
+
+        <div className={`w-9 h-9 rounded-full ${meta.bg} flex items-center justify-center text-white shrink-0 relative z-10`}>
+          <Icon size={16} />
+        </div>
+        <div className={`w-12 h-8 ${meta.bg} ${active ? '' : 'opacity-85'} rounded-t-2xl -mt-1`} />
+      </div>
+
+      {/* 3D-ish desk: top surface + front panel */}
+      <div className="relative">
+        <div className="w-16 h-2 rounded-t-sm" style={{ backgroundColor: '#A97C50' }} />
+        <div className="w-16 h-2.5 rounded-b-sm" style={{ backgroundColor: '#7A5637' }} />
+      </div>
+      <Shadow />
+      <span className={`text-[9px] font-semibold mt-1 ${active ? meta.text : 'text-slate-400'}`}>{meta.label}</span>
     </div>
   )
 }
@@ -115,16 +187,20 @@ export default function Classroom() {
     api.getVoiceStatus().then((s) => setVoiceEnabled(!!s.enabled)).catch(() => setVoiceEnabled(false))
   }, [])
 
-  // The stage freezes on the first unanswered hint/blank — like actually
-  // being called on — instead of racing ahead while turns keep streaming
-  // in behind the scenes. Anything that arrived after it stays hidden until
-  // you respond, then the lecture "catches up" to the real latest turn.
+  // The room freezes on the first unanswered hint/blank — like actually
+  // being called on — instead of racing ahead while turns keep streaming in
+  // behind the scenes. Anything that arrived after it stays hidden until you
+  // respond, then the lecture "catches up" to the real latest turn.
   const pendingInteractive = turns.find(
     (t) => (t.turn_type === 'blank' || t.turn_type === 'hint') && !revealedHints[t.id]
   )
   const currentTurn = pendingInteractive || (turns.length ? turns[turns.length - 1] : null)
   const currentIndex = currentTurn ? turns.findIndex((t) => t.id === currentTurn.id) : -1
+  const visibleTurns = currentIndex >= 0 ? turns.slice(0, currentIndex + 1) : []
   const historyTurns = currentIndex > 0 ? turns.slice(0, currentIndex) : []
+  const lastTeacherTurn = [...visibleTurns].reverse().find((t) => t.speaker === 'teacher')
+  const boardText = lastTeacherTurn?.content ?? 'Welcome — class is about to begin.'
+  const calledOn = currentTurn?.turn_type === 'blank' || currentTurn?.turn_type === 'hint'
 
   useEffect(() => {
     recapEndRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'end' })
@@ -255,142 +331,9 @@ export default function Classroom() {
     }
   }
 
-  function renderStage() {
-    if (!currentTurn) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-          <Avatar speaker="teacher" size="lg" />
-          <p className="text-sm text-slate-400 mt-3">Walking into the classroom…</p>
-        </div>
-      )
-    }
-
-    const meta = PERSONA[currentTurn.speaker] || PERSONA.teacher
-
-    // The moment the user asked about explicitly: fill-in-the-blank is where
-    // the teacher calls on you directly.
-    if (currentTurn.turn_type === 'blank') {
-      return (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <Avatar speaker="teacher" size="sm" />
-            <div className="flex items-center gap-1.5 text-amber">
-              <Hand size={16} className="animate-pulse" />
-              <span className="text-xs font-semibold uppercase tracking-wide">The teacher points at you</span>
-            </div>
-          </div>
-          <div className="border-2 border-dashed border-amber rounded-2xl bg-amber-light p-6">
-            <p className="font-display text-lg text-ink leading-relaxed mb-5">{currentTurn.content}</p>
-            <div className="flex items-center gap-3">
-              <div className="relative shrink-0">
-                <Avatar speaker="learner" size="md" />
-                <span className="absolute -inset-1 rounded-full border-2 border-amber animate-ping" />
-              </div>
-              <input
-                autoFocus
-                className="border border-amber/40 bg-white rounded-xl px-4 py-2.5 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-amber/30"
-                placeholder="Fill in the blank…"
-                value={guesses[currentTurn.id] || ''}
-                onChange={(e) => setGuesses((prev) => ({ ...prev, [currentTurn.id]: e.target.value }))}
-                onKeyDown={(e) => e.key === 'Enter' && submitGuess(currentTurn)}
-              />
-              <button
-                className="bg-ink text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-cobalt-dark transition-colors shrink-0"
-                onClick={() => submitGuess(currentTurn)}
-              >
-                Answer
-              </button>
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    if (currentTurn.turn_type === 'hint') {
-      return (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <Avatar speaker="teacher" size="sm" />
-            <div className="flex items-center gap-1.5 text-cobalt">
-              <HelpCircle size={16} />
-              <span className="text-xs font-semibold uppercase tracking-wide">Your guess, before the answer</span>
-            </div>
-          </div>
-          <div className="border-2 border-cobalt/30 rounded-2xl bg-cobalt-light p-6">
-            <p className="font-display text-lg text-ink leading-relaxed mb-5">{currentTurn.content}</p>
-            <div className="flex items-center gap-3">
-              <Avatar speaker="learner" size="md" />
-              <input
-                autoFocus
-                className="border border-cobalt/30 bg-white rounded-xl px-4 py-2.5 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-cobalt/30"
-                placeholder="Your guess…"
-                value={guesses[currentTurn.id] || ''}
-                onChange={(e) => setGuesses((prev) => ({ ...prev, [currentTurn.id]: e.target.value }))}
-                onKeyDown={(e) => e.key === 'Enter' && submitGuess(currentTurn)}
-              />
-              <button
-                className="bg-ink text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-cobalt-dark transition-colors shrink-0"
-                onClick={() => submitGuess(currentTurn)}
-              >
-                Reveal
-              </button>
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    if (currentTurn.speaker === 'teacher') {
-      return (
-        <div className="flex items-start gap-4">
-          <div className="flex flex-col items-center gap-1.5 shrink-0">
-            <Avatar speaker="teacher" size="lg" />
-            <span className="text-[10px] font-semibold text-teacher">Teacher</span>
-          </div>
-          <div className="flex-1 bg-[#28352F] text-white rounded-2xl p-6 relative shadow-inner">
-            <div className="absolute top-3 right-3">
-              {ttsSupported && (
-                <button onClick={() => speakText(currentTurn.content)} className="text-white/40 hover:text-white transition-colors" aria-label="Read aloud">
-                  <Volume2 size={14} />
-                </button>
-              )}
-            </div>
-            <p className="font-display text-lg leading-relaxed pr-6">{currentTurn.content}</p>
-          </div>
-        </div>
-      )
-    }
-
-    if (currentTurn.speaker === 'learner') {
-      return (
-        <div className="flex items-start gap-4 flex-row-reverse text-right">
-          <div className="flex flex-col items-center gap-1.5 shrink-0">
-            <Avatar speaker="learner" size="lg" />
-            <span className="text-[10px] font-semibold text-learner">You</span>
-          </div>
-          <div className="flex-1 bg-white border-2 border-learner/20 rounded-2xl p-6">
-            <p className="text-xs font-medium text-learner mb-1.5">✋ You raised your hand</p>
-            <p className="text-sm text-ink leading-relaxed">{currentTurn.content}</p>
-          </div>
-        </div>
-      )
-    }
-
-    // basic_student / advanced_student raising a doubt
-    const fromRight = currentTurn.speaker === 'advanced_student'
-    return (
-      <div className={`flex items-start gap-4 ${fromRight ? 'flex-row-reverse text-right' : ''}`}>
-        <div className="flex flex-col items-center gap-1.5 shrink-0">
-          <Avatar speaker={currentTurn.speaker} size="lg" />
-          <span className={`text-[10px] font-semibold ${meta.text}`}>{meta.label}</span>
-        </div>
-        <div className={`flex-1 bg-white border-2 ${meta.border} rounded-2xl p-6`}>
-          <p className={`text-xs font-medium ${meta.text} mb-1.5`}>✋ raised a hand</p>
-          <p className="text-sm text-ink leading-relaxed">{currentTurn.content}</p>
-        </div>
-      </div>
-    )
-  }
+  const basicSpeaking = currentTurn?.speaker === 'basic_student'
+  const advancedSpeaking = currentTurn?.speaker === 'advanced_student'
+  const learnerSpeaking = currentTurn?.speaker === 'learner'
 
   return (
     <NavShell title="Classroom">
@@ -433,23 +376,145 @@ export default function Classroom() {
           </div>
         )}
 
-        {/* the stage — current classroom moment */}
-        <div
-          className="rounded-3xl border border-slate-200 p-8 min-h-[280px] flex flex-col justify-center"
-          style={{
-            backgroundColor: '#F8F7F3',
-            backgroundImage:
-              'linear-gradient(rgba(27,33,48,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(27,33,48,0.035) 1px, transparent 1px)',
-            backgroundSize: '22px 22px',
-          }}
-        >
-          {renderStage()}
-
-          {!streamDone && !pendingInteractive && (
-            <div className="flex items-center gap-2 text-xs text-slate-400 mt-5">
-              <Loader2 size={13} className="animate-spin" /> Class is in session…
+        {/* the classroom */}
+        <div className="relative rounded-3xl border border-slate-200 overflow-hidden">
+          {/* walls */}
+          <div className="absolute inset-0" style={{ backgroundColor: '#E4E7DD' }} />
+          <div className="absolute left-0 right-0 bottom-0 h-[38%]" style={{ backgroundColor: '#D7C4A3' }} />
+          <div className="absolute left-0 right-0 bottom-[38%] h-[3px]" style={{ backgroundColor: '#B99E76' }} />
+          {/* floor */}
+          <div className="absolute left-0 right-0 bottom-0 h-[16%]" style={{ backgroundColor: '#9C7A50' }} />
+          <div
+            className="absolute left-0 right-0 bottom-0 h-[16%] opacity-25"
+            style={{
+              backgroundImage: 'repeating-linear-gradient(90deg, transparent 0 78px, rgba(0,0,0,0.25) 78px 80px)',
+            }}
+          />
+          {/* window */}
+          <div className="absolute top-5 right-6 w-20 h-24 rounded-md shadow-inner hidden sm:block" style={{ backgroundColor: '#CFE3EA', border: '5px solid #F5F1E8' }}>
+            <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(160deg, rgba(255,255,255,0.55), transparent 60%)' }} />
+            <div className="absolute left-1/2 top-0 bottom-0 w-[3px] -translate-x-1/2 bg-[#F5F1E8]" />
+            <div className="absolute top-1/2 left-0 right-0 h-[3px] -translate-y-1/2 bg-[#F5F1E8]" />
+          </div>
+          {/* wall clock */}
+          <div className="absolute top-6 left-6 w-9 h-9 rounded-full bg-white border-2 border-slate-300 hidden sm:flex items-center justify-center shadow-sm">
+            <div className="absolute w-[2px] h-2.5 bg-ink rounded-full origin-bottom" style={{ transform: 'rotate(35deg)', bottom: '50%' }} />
+            <div className="absolute w-[2px] h-3.5 bg-ink/70 rounded-full origin-bottom" style={{ transform: 'rotate(-70deg)', bottom: '50%' }} />
+          </div>
+          {/* potted plant, bottom-left corner */}
+          <div className="absolute bottom-[15%] left-4 hidden sm:block">
+            <div className="relative flex flex-col items-center">
+              <div className="flex items-end gap-[-2px]">
+                <div className="w-4 h-7 rounded-t-full bg-basic -mr-1.5 rotate-[-18deg] opacity-90" />
+                <div className="w-4 h-9 rounded-t-full bg-basic z-10" />
+                <div className="w-4 h-7 rounded-t-full bg-basic -ml-1.5 rotate-[18deg] opacity-90" />
+              </div>
+              <div className="w-8 h-6 rounded-b-lg" style={{ backgroundColor: '#B5764A' }} />
+              <Shadow width="w-8" />
             </div>
-          )}
+          </div>
+
+          <div className="relative p-6 pb-4">
+            {/* blackboard + teacher */}
+            <div className="flex items-end justify-center gap-4 mb-6">
+              <div className="flex flex-col items-center shrink-0">
+                {calledOn && (
+                  <span className="text-[10px] font-semibold text-amber mb-1 flex items-center gap-1 animate-pulse">
+                    <Hand size={11} /> points at you
+                  </span>
+                )}
+                <div className={`relative transition-transform duration-300 ${calledOn ? 'rotate-3' : ''}`}>
+                  {calledOn && (
+                    <div className="absolute top-11 -right-3 w-3 h-8 rounded-full bg-teacher rotate-[35deg] origin-top z-0" />
+                  )}
+                  <div className="absolute top-9 -left-2 w-2.5 h-5 rounded-full bg-teacher opacity-90 rotate-[15deg]" />
+                  <div className="w-11 h-11 rounded-full bg-teacher flex items-center justify-center text-white relative z-10">
+                    <GraduationCap size={20} />
+                  </div>
+                  <div className="w-16 h-20 bg-teacher rounded-t-full -mt-1 relative z-[1]" />
+                  <div className="flex justify-center gap-1">
+                    <div className="w-3 h-4 bg-ink/80 rounded-b-sm" />
+                    <div className="w-3 h-4 bg-ink/80 rounded-b-sm" />
+                  </div>
+                </div>
+                <Shadow width="w-16" />
+              </div>
+
+              <div className="flex-1 max-w-xl">
+                <div
+                  className="rounded-xl p-5 shadow-inner border-[6px] relative"
+                  style={{ backgroundColor: '#28352F', borderColor: '#8B5E34' }}
+                >
+                  {ttsSupported && lastTeacherTurn && (
+                    <button
+                      onClick={() => speakText(boardText)}
+                      className="absolute top-2 right-2 text-white/30 hover:text-white transition-colors"
+                      aria-label="Read board aloud"
+                    >
+                      <Volume2 size={13} />
+                    </button>
+                  )}
+                  <p className="font-display text-white text-[15px] leading-relaxed text-center pr-4">
+                    {boardText}
+                  </p>
+                </div>
+                <div className="h-2 rounded-b-sm mx-3 relative" style={{ backgroundColor: '#8B5E34' }}>
+                  <div className="absolute left-4 -top-0.5 w-3 h-1.5 bg-white/80 rounded-full" />
+                  <div className="absolute left-9 -top-0.5 w-2.5 h-1.5 bg-white/60 rounded-full" />
+                </div>
+              </div>
+            </div>
+
+            {/* back row — decorative, sells "whole class" */}
+            <div className="flex justify-center gap-8 mb-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <GenericFigure key={i} seed={i} />
+              ))}
+            </div>
+
+            {/* front row — basic student | you | advanced student */}
+            <div className="flex justify-center items-end gap-10 mb-1">
+              <StudentDesk persona="basic_student" speaking={basicSpeaking} speechText={basicSpeaking ? currentTurn?.content : undefined} />
+              <StudentDesk
+                persona="learner"
+                speaking={learnerSpeaking}
+                speechText={learnerSpeaking ? currentTurn?.content : undefined}
+                calledOn={calledOn}
+              />
+              <StudentDesk persona="advanced_student" speaking={advancedSpeaking} speechText={advancedSpeaking ? currentTurn?.content : undefined} />
+            </div>
+
+            {/* your turn — answer card, appears right under your desk */}
+            {calledOn && currentTurn && (
+              <div className="max-w-md mx-auto mt-4 border-2 border-dashed border-amber rounded-2xl bg-white/90 backdrop-blur-sm p-4">
+                <p className="text-xs font-semibold text-amber mb-2 uppercase tracking-wide">
+                  {currentTurn.turn_type === 'blank' ? 'Fill in the blank' : 'Your guess, before the answer'}
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    className="border border-amber/40 bg-white rounded-xl px-3 py-2 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-amber/30"
+                    placeholder={currentTurn.turn_type === 'blank' ? 'Your answer…' : 'Your guess…'}
+                    value={guesses[currentTurn.id] || ''}
+                    onChange={(e) => setGuesses((prev) => ({ ...prev, [currentTurn.id]: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && submitGuess(currentTurn)}
+                  />
+                  <button
+                    className="bg-ink text-white rounded-xl px-4 py-2 text-sm font-medium hover:bg-cobalt-dark transition-colors shrink-0"
+                    onClick={() => submitGuess(currentTurn)}
+                  >
+                    {currentTurn.turn_type === 'blank' ? 'Answer' : 'Reveal'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!streamDone && !pendingInteractive && (
+              <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mt-4">
+                <Loader2 size={13} className="animate-spin" /> Class is in session…
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-3 flex gap-2 items-center">

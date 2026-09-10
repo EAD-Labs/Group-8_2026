@@ -4,7 +4,6 @@ import { ArrowRight, Sparkles, Flame, HelpCircle, ClipboardCheck } from 'lucide-
 import NavShell from '../components/NavShell'
 import { api } from '../api/client'
 
-type D03 = { status: string; pairs: { pair_id: string; difficulty_reviewed: boolean }[] }
 type ProgressData = {
   points: number
   badges: { code: string; label: string; emoji: string }[]
@@ -14,13 +13,11 @@ type ProgressData = {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [d03, setD03] = useState<D03 | null>(null)
   const [progress, setProgress] = useState<ProgressData | null>(null)
   const [pendingQuizCount, setPendingQuizCount] = useState(0)
   const [me, setMe] = useState<{ name: string } | null>(null)
 
   useEffect(() => {
-    api.getD03Status().then(setD03).catch(() => {})
     api.getProgress().then(setProgress).catch(() => {})
     api.getMe().then(setMe).catch(() => {})
     api.getPendingQuizzes().then((qs) => setPendingQuizCount(qs.filter((q: { available_now: boolean }) => q.available_now).length)).catch(() => {})
@@ -126,13 +123,6 @@ export default function Dashboard() {
             <ArrowRight size={16} className="mt-3 text-slate-400 group-hover:translate-x-1 transition-transform" />
           </button>
         </div>
-
-        {d03 && d03.status === 'open' && (
-          <div className="bg-amber-light border border-amber/20 rounded-2xl p-4 text-sm text-amber">
-            <span className="font-medium">D-03 open</span> — {d03.pairs.filter((p) => !p.difficulty_reviewed).length} of{' '}
-            {d03.pairs.length} comparative-study pairs still need a TA/instructor difficulty check (HLD §16).
-          </div>
-        )}
       </div>
     </NavShell>
   )

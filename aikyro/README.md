@@ -70,13 +70,45 @@ mock` — you can run it today with zero API keys.
 
 | Area | File | What's stubbed |
 |---|---|---|
-| Real LLM calls | `backend/app/services/llm_providers.py` | `_call_live` raises `NotImplementedError` — swap in real provider SDKs, flip `config.llm_mode = "live"` |
-| Disagreement detection / adjudication | `backend/app/services/verification_engine.py` | naive string-diff placeholder, not semantic |
-| Answer scoring | `backend/app/routers/checkpoint.py` | checks non-empty, not correctness — replace with real grading against the verified record |
+| Real LLM calls | ~~`backend/app/services/llm_providers.py`~~ | done — real Anthropic + OpenAI calls over plain `httpx`. Add your keys and see "Turning on real AI" below |
+| Disagreement detection / adjudication | ~~`backend/app/services/verification_engine.py`~~ | done in live mode — a judge LLM call reconciles the providers' answers; falls back to naive first-answer-wins in mock mode or if the judge call fails |
+| Answer scoring | ~~`backend/app/services/grading_service.py`~~ | done in live mode — an LLM judges checkpoint/quiz answers against the verified explanation; falls back to non-empty-passes in mock mode |
+| Dialogue content | ~~`backend/app/services/dialogue_orchestrator.py`~~ | done in live mode — each of the 7 turns is generated live, grounded in the verified explanation and building on prior turns; falls back to fixed templates in mock mode |
 | Real speech models | `backend/app/services/speech_signal_service.py` | mock transcript/timing — wire in after the D1 spike; UI/recording already works |
 | Points/badges | ~~`backend/app/routers/progress.py`~~ | done — real point values and a small badge catalog, see `measurement_service.py` |
 | Comparative report aggregation | `backend/app/services/measurement_service.py::comparative_report` | needs real queries once pilot data exists |
 | Voice capture UI | ~~`frontend/src/pages/Classroom.tsx`~~ | done — records via `MediaRecorder`, submits, shows score |
+
+## Turning on real AI
+
+The whole pipeline (verification, adjudication, classroom dialogue, and
+grading) runs on real providers once you add keys. It's not all-or-nothing:
+
+1. `cp backend/.env.example backend/.env`
+2. Fill in `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` (one is enough to
+   turn everything on; two enables actual cross-provider checking).
+3. Set `LLM_MODE=live` in that same `.env` file.
+4. Restart the backend.
+
+What changes, concretely:
+- **Verification** (`verification_engine.py`) — with two keys, both
+  providers actually answer, and a judge call reconciles disagreements
+  into one verified explanation with a real confidence score. With one
+  key, that provider's answer is used directly.
+- **Classroom dialogue** (`dialogue_orchestrator.py`) — all 7 turns
+  (teacher intro, student doubts, hint, blank, boundary case, wrap-up) are
+  generated live, each grounded in the verified explanation and aware of
+  what was said earlier in the same lesson, instead of fixed templates.
+- **Grading** (`grading_service.py`) — checkpoints and quizzes are judged
+  against the verified explanation for actual understanding, not just
+  "did you type something."
+
+Every one of these has a per-call try/except that falls back to the mock
+behavior on failure (bad key, rate limit, network blip) — a flaky API call
+degrades that one turn/grade, it doesn't crash the session. Model names are
+settings (`anthropic_model` / `openai_model` in `config.py`), not
+hardcoded, since provider lineups move fast — check the docs links in
+`.env.example` if a model name stops working.
 
 ## Where to make changes as the HLD changes
 
@@ -117,15 +149,17 @@ Runs on http://localhost:5173, points at the backend on :8000
 
 ## Suggested next steps, in HLD order
 
-1. Run the D1 voice feasibility spike (HLD 10.6); wire the winner into
+1. Add API keys and flip `LLM_MODE=live` (see "Turning on real AI" above),
+   then actually read through some real generated dialogue/grading output
+   and tune the prompts in `dialogue_orchestrator.py` / `grading_service.py`
+   — they're solid starting points, not final-tuned.
+2. Run the D1 voice feasibility spike (HLD 10.6); wire the winner into
    `speech_signal_service.py`.
-2. Get the client's TA/instructor difficulty sanity-check on the four
+3. Get the client's TA/instructor difficulty sanity-check on the four
    `graded_pairs` in `modules.json` (D-03, HLD §16 — explicitly still OPEN
    in v2.5) and call `POST /topics/pairs/{pair_id}/mark-reviewed` for each
    once confirmed.
-3. Replace placeholder scoring/adjudication with real logic.
-4. Wire a real LLM provider and flip `llm_mode` to `"live"`.
-5. Move off SQLite to managed Postgres for anything beyond local dev.
+4. Move off SQLite to managed Postgres for anything beyond local dev.
 
 ## Design system
 
@@ -141,7 +175,14 @@ not by hunting for hex codes across components.
   works because it's plain semantic HTML, but nothing's been audited.
 - **Offline graceful-failure (HLD §11.6)** — a dropped connection currently
   just errors out, no retry/resync.
-- **Real answer grading** — checkpoints and quizzes still pass on any
-  non-empty answer. This is the most load-bearing remaining stub: it's what
-  makes the whole "verified knowledge, real assessment" story fake right now.
-- **Real multi-agent adjudication** — still a placeholder, see the table above.
+- **Real speech transcription** — voice recording/scoring UI is real, the
+  transcriber behind it is still mock until the D1 spike (see table above).
+- **Live mode is untested against real API responses** — I built and
+  verified every live-mode code path (adjudication, dialogue generation,
+  grading) against mocked provider calls, since I don't have API keys to
+  test with. The logic is sound, but real model output is messier than a
+  mock — expect to tune the judge/grading prompts once you're actually
+  looking at Claude/GPT responses, especially the JSON-verdict parsing if a
+  model wraps its answer differently than expected.
+- **Comparative report aggregation** — still returns `null`s until pilot
+  data exists and the real aggregation queries are written.

@@ -42,7 +42,7 @@ async def start_session(
     db.commit()
     db.refresh(session)
 
-    turns = build_dialogue(record)
+    turns = await build_dialogue(record)
     for i, t in enumerate(turns):
         db.add(DialogueTurn(session_id=session.id, turn_index=i, **t))
     db.commit()
@@ -78,7 +78,7 @@ async def start_freeform_session(
     db.commit()
     db.refresh(session)
 
-    turns = build_dialogue(record)
+    turns = await build_dialogue(record)
     for i, t in enumerate(turns):
         db.add(DialogueTurn(session_id=session.id, turn_index=i, **t))
     db.commit()
@@ -131,9 +131,11 @@ async def ask_question(session_id: str, payload: LearnerQuestionRequest, db: DBS
 
     from app.models import VerifiedKnowledgeRecord
     record = db.query(VerifiedKnowledgeRecord).filter_by(id=session.verified_record_id).first()
+    concept = get_concept(session.concept_id)
+    concept_name = concept["name"] if concept else (record.topic_name if record else session.concept_id)
 
-    answer_turn = insert_learner_question(
-        [], payload.question, record.verified_text if record else ""
+    answer_turn = await insert_learner_question(
+        payload.question, record.verified_text if record else "", concept_name
     )
     next_index = db.query(DialogueTurn).filter_by(session_id=session_id).count()
     turn = DialogueTurn(session_id=session_id, turn_index=next_index, **answer_turn)

@@ -1,8 +1,9 @@
 """
 Part 1 - Verified Knowledge Engine (HLD 6.1).
 
-Pipeline: parallel generation across providers -> pairwise disagreement
-detection -> adjudication -> confidence annotation -> store with provenance.
+Pipeline: parallel generation across providers -> disagreement detection ->
+adjudication (a judge LLM call reconciles them into one verified answer) ->
+confidence annotation -> store with provenance.
 
 Two entry points:
   - produce_verified_record: pilot concepts, looked up in content/modules.json,
@@ -12,20 +13,23 @@ Two entry points:
     two modules; open-topic exploration is the "general use" path, not part
     of the platform-vs-plain-chat delta). Cached per exact topic string.
 
-This is a working but intentionally simple implementation: disagreement
-detection is a stand-in (string-similarity style placeholder) rather than a
-real semantic diff. Swap `_detect_disagreements` and `_adjudicate` for
-something more serious later — everything downstream (dialogue orchestrator,
-storage schema) already expects the same output shape, so that swap is
-isolated to this file.
+Adjudication has two paths:
+  - live mode with 2+ real answers: a judge LLM call compares them and
+    returns a single reconciled explanation plus its own disagreement/
+    confidence read — see `_adjudicate_live`.
+  - mock mode, or only one usable answer: falls back to the naive
+    first-answer-wins placeholder (`_adjudicate_naive`) so the pipeline
+    still works with zero API keys.
 """
 import asyncio
+import re
+
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import settings
 from app.content.loader import get_concept
 from app.models import VerifiedKnowledgeRecord
-from app.services.llm_providers import generate
+from app.services.llm_providers import generate, preferred_available_provider, extract_json_object
 
 
 async def produce_verified_record(db: DBSession, concept_id: str) -> VerifiedKnowledgeRecord:
@@ -84,8 +88,7 @@ async def _run_pipeline(
     )
     answers = {p: r for p, r in zip(settings.llm_providers, results) if r is not None}
 
-    disagreements = _detect_disagreements(answers)
-    verified_text, confidence = _adjudicate(answers, disagreements)
+    verified_text, disagreements, confidence = await _adjudicate(answers, concept_name)
 
     record = VerifiedKnowledgeRecord(
         concept_id=concept_id,
@@ -103,7 +106,6 @@ async def _run_pipeline(
 
 
 def _slugify(text: str) -> str:
-    import re
     slug = re.sub(r"[^a-z0-9]+", "-", text.strip().lower()).strip("-")
     return slug[:80] or "topic"
 
@@ -124,25 +126,62 @@ def _build_prompt(concept_name: str, bloom_level: str) -> str:
     )
 
 
-def _detect_disagreements(answers: dict[str, str]) -> dict:
-    # Placeholder pairwise check. Real implementation should do semantic
-    # comparison (e.g. an adjudication LLM call), not string length.
+async def _adjudicate(answers: dict[str, str], concept_name: str) -> tuple[str, dict, float]:
+    """Returns (verified_text, disagreements, confidence)."""
+    if not answers:
+        return "Verification failed: no provider produced an answer.", {}, 0.0
+
+    if len(answers) >= 2 and settings.llm_mode == "live":
+        judge = preferred_available_provider()
+        if judge:
+            live_result = await _adjudicate_live(judge, answers, concept_name)
+            if live_result:
+                return live_result
+
+    return _adjudicate_naive(answers)
+
+
+async def _adjudicate_live(judge_provider: str, answers: dict[str, str], concept_name: str) -> tuple[str, dict, float] | None:
+    """
+    Real adjudication: ask one provider to act as judge over every answer,
+    reconcile any factual disagreements, and return strict JSON. Returns
+    None (caller falls back to the naive method) on any parse/call failure
+    — adjudication failing should degrade, not crash the whole pipeline.
+    """
+    labeled_answers = "\n\n".join(f"Answer from {name}:\n{text}" for name, text in answers.items())
+    judge_prompt = (
+        f"You are fact-checking {len(answers)} AI-generated explanations of the concept "
+        f"'{concept_name}' before they're shown to a student. Compare them for factual "
+        f"disagreements (not just wording differences).\n\n{labeled_answers}\n\n"
+        "Respond with ONLY a JSON object, no other text, in this exact shape:\n"
+        '{"verified_text": "<one accurate, concise explanation combining the best of '
+        'both, correcting any error you found>", '
+        '"disagreements": {"<short description>": "<how you resolved it>"}, '
+        '"confidence": <0.0 to 1.0, lower if the sources meaningfully disagreed>}'
+    )
+
+    try:
+        raw = await generate(judge_provider, judge_prompt, concept_name=concept_name)
+        parsed = extract_json_object(raw)
+        verified_text = parsed["verified_text"]
+        disagreements = parsed.get("disagreements", {}) or {}
+        confidence = float(parsed.get("confidence", 0.9))
+        confidence = max(0.0, min(1.0, confidence))
+        return verified_text, disagreements, confidence
+    except Exception:
+        return None
+
+
+def _adjudicate_naive(answers: dict[str, str]) -> tuple[str, dict, float]:
+    """Mock-mode / single-answer / judge-failure fallback: first answer wins."""
     disagreements = {}
     providers = list(answers.keys())
     for i in range(len(providers)):
         for j in range(i + 1, len(providers)):
             a, b = providers[i], providers[j]
             if answers[a] and answers[b] and answers[a] != answers[b]:
-                disagreements[f"{a}_vs_{b}"] = "flagged_for_review"
-    return disagreements
+                disagreements[f"{a}_vs_{b}"] = "flagged_for_review (naive mode — no judge call made)"
 
-
-def _adjudicate(answers: dict[str, str], disagreements: dict) -> tuple[str, float]:
-    if not answers:
-        return "Verification failed: no provider produced an answer.", 0.0
-    # naive adjudication: take the first successful answer as the verified
-    # text, lower confidence if providers disagreed. Replace with a real
-    # adjudication pass (e.g. a third LLM call reconciling the two) later.
     verified_text = next(iter(answers.values()))
     confidence = 1.0 if not disagreements else max(0.5, 1.0 - 0.15 * len(disagreements))
-    return verified_text, confidence
+    return verified_text, disagreements, confidence

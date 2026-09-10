@@ -4,13 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
 from app.auth import get_current_user
+from app.content.loader import get_concept
 from app.database import get_db
-from app.models import User, MasteryRecord, DoubtLogEntry, QuizResult, Badge
+from app.models import User, MasteryRecord, DoubtLogEntry, QuizResult, Badge, VerifiedKnowledgeRecord
 from app.schemas import PendingQuizOut, QuizSubmitRequest, QuizSubmitResponse
 from app.services.measurement_service import (
     comparative_report, record_retention_result, record_transfer_result,
     close_doubt as close_doubt_service, BADGE_CATALOG, POINTS, _check_badges,
 )
+from app.services.grading_service import grade_answer
 
 router = APIRouter(prefix="/progress", tags=["progress"])
 
@@ -91,7 +93,7 @@ def pending_quizzes(db: DBSession = Depends(get_db), user: User = Depends(get_cu
 
 
 @router.post("/quizzes/{quiz_id}/submit", response_model=QuizSubmitResponse)
-def submit_quiz(
+async def submit_quiz(
     quiz_id: str, payload: QuizSubmitRequest, db: DBSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
     quiz = db.query(QuizResult).filter_by(id=quiz_id, user_id=user.id).first()
@@ -102,18 +104,27 @@ def submit_quiz(
     if quiz.scheduled_for > datetime.utcnow():
         raise HTTPException(400, "Not available yet — retention checks unlock on their scheduled date")
 
-    # Placeholder grading, same honest limitation as the checkpoint endpoint:
-    # non-empty answer passes. Replace with real grading against the
-    # verified record once live LLM grading is wired in.
-    answer = payload.answer.strip()
-    score = 1.0 if answer else 0.0
-    passed = bool(answer)
+    record = (
+        db.query(VerifiedKnowledgeRecord)
+        .filter_by(concept_id=quiz.concept_id)
+        .order_by(VerifiedKnowledgeRecord.created_at.desc())
+        .first()
+    )
+    concept = get_concept(quiz.concept_id)
+    concept_name = concept["name"] if concept else (record.topic_name if record else quiz.concept_id)
+
+    passed, score, _feedback = await grade_answer(
+        prompt=quiz.prompt or "",
+        verified_text=record.verified_text if record else "",
+        learner_answer=payload.answer,
+        concept_name=concept_name,
+    )
 
     points_before = user.total_points or 0
     if quiz.quiz_type == "retention":
-        record_retention_result(db, quiz, passed, score, answer)
+        record_retention_result(db, quiz, passed, score, payload.answer)
     else:
-        record_transfer_result(db, quiz, passed, score, answer)
+        record_transfer_result(db, quiz, passed, score, payload.answer)
 
     db.refresh(user)
     points_awarded = (user.total_points or 0) - points_before
