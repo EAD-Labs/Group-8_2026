@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Sparkles, Clock, Zap } from 'lucide-react'
+import { Sparkles, Clock, Zap, Mic } from 'lucide-react'
 import NavShell from '../components/NavShell'
 import { api } from '../api/client'
+import { useSpeechToText } from '../hooks/useSpeechToText'
 
 type Quiz = {
   id: string
@@ -12,12 +13,55 @@ type Quiz = {
   available_now: boolean
 }
 
+function VoiceAnswerField({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder: string
+}) {
+  const { supported, listening, error, toggleListening } = useSpeechToText((text) =>
+    onChange(value ? `${value} ${text}` : text)
+  )
+  return (
+    <div>
+      <div className="relative">
+        <textarea
+          className="w-full border border-slate-200 rounded-xl px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-cobalt/30 focus:border-cobalt"
+          rows={3}
+          placeholder={listening ? 'Listening…' : placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        {supported && (
+          <button
+            type="button"
+            onClick={toggleListening}
+            className={`absolute top-2 right-2 w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
+              listening ? 'bg-learner text-white animate-pulse' : 'text-slate-400 hover:bg-slate-50'
+            }`}
+            aria-label={listening ? 'Stop listening' : 'Answer by voice'}
+            title="Answer by voice"
+          >
+            <Mic size={14} />
+          </button>
+        )}
+      </div>
+      {error && <p className="text-xs text-amber mt-1">{error}</p>}
+    </div>
+  )
+}
+
 export default function Quizzes() {
   const [quizzes, setQuizzes] = useState<Quiz[]>([])
   const [loading, setLoading] = useState(true)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState<string | null>(null)
-  const [results, setResults] = useState<Record<string, { passed: boolean; points_awarded: number; newly_awarded_badges: string[] }>>({})
+  const [results, setResults] = useState<
+    Record<string, { passed: boolean; feedback: string; points_awarded: number; newly_awarded_badges: string[] }>
+  >({})
 
   function load() {
     setLoading(true)
@@ -70,12 +114,10 @@ export default function Quizzes() {
               <span className="text-xs text-slate-400">{quiz.concept_id.replace('freeform:', '').replaceAll('-', ' ').replaceAll('_', ' ')}</span>
             </div>
             <p className="text-sm text-ink mb-3">{quiz.prompt}</p>
-            <textarea
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cobalt/30 focus:border-cobalt"
-              rows={3}
-              placeholder="Your answer…"
+            <VoiceAnswerField
               value={answers[quiz.id] || ''}
-              onChange={(e) => setAnswers((prev) => ({ ...prev, [quiz.id]: e.target.value }))}
+              onChange={(v) => setAnswers((prev) => ({ ...prev, [quiz.id]: v }))}
+              placeholder="Your answer…"
             />
             <button
               className="mt-3 bg-ink text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 hover:bg-cobalt-dark transition-colors"
@@ -95,6 +137,7 @@ export default function Quizzes() {
               <p className={`text-sm font-medium ${res.passed ? 'text-basic' : 'text-amber'}`}>
                 {res.passed ? 'Nice — recorded.' : 'Recorded — this one stays open for now.'}
               </p>
+              {res.feedback && <p className="text-xs text-slate-600 mt-1">{res.feedback}</p>}
               {res.points_awarded > 0 && (
                 <p className="text-xs text-amber flex items-center gap-1 mt-1">
                   <Sparkles size={12} /> +{res.points_awarded} points

@@ -9,10 +9,19 @@ described in the D-03 email:
 """
 import json
 import random
+import re
+import uuid
+from datetime import datetime
 from pathlib import Path
 from functools import lru_cache
 
 _CONTENT_PATH = Path(__file__).parent / "modules.json"
+
+# Learner-generated modules (HLD 6.4 extension path: "a module is a list of
+# concepts with Bloom targets ... the verification engine generates
+# everything else"). Stored one JSON file per user, outside modules.json,
+# because these are per-account content, not shared pilot content.
+_CUSTOM_MODULES_DIR = Path(__file__).parent / "custom_modules"
 
 
 @lru_cache
@@ -26,7 +35,10 @@ def get_concept(concept_id: str) -> dict | None:
     for module in content["modules"]:
         for concept in module["concepts"]:
             if concept["id"] == concept_id:
-                return {**concept, "module_id": module["id"], "module_name": module["name"]}
+                return {**concept, "module_id": module["id"], "module_name": module["name"], "is_custom": False}
+
+    if concept_id.startswith("custom:"):
+        return get_custom_concept(concept_id)
     return None
 
 
@@ -35,7 +47,100 @@ def get_module(module_id: str) -> dict | None:
     for module in content["modules"]:
         if module["id"] == module_id:
             return module
+    if module_id.startswith("custom_"):
+        for path in _CUSTOM_MODULES_DIR.glob("*.json"):
+            for module in _read_custom_file(path):
+                if module["id"] == module_id:
+                    return module
     return None
+
+
+# ---------------------------------------------------------------------------
+# Custom (learner-described) modules
+# ---------------------------------------------------------------------------
+
+def _custom_modules_path(user_id: str) -> Path:
+    _CUSTOM_MODULES_DIR.mkdir(parents=True, exist_ok=True)
+    # user_id is our own uuid, never user input, so it's safe as a filename
+    return _CUSTOM_MODULES_DIR / f"{user_id}.json"
+
+
+def _read_custom_file(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    try:
+        with open(path) as f:
+            return json.load(f).get("modules", [])
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def list_custom_modules(user_id: str) -> list[dict]:
+    """All modules a specific learner has generated (HLD 4: scoped to their own account)."""
+    return _read_custom_file(_custom_modules_path(user_id))
+
+
+def save_custom_module(user_id: str, name: str, topic_description: str, concepts: list[dict], sources: list[dict]) -> dict:
+    """
+    Persists a learner-generated module to that user's own file. Concept ids
+    are prefixed `custom:` and module ids `custom_` so they can never collide
+    with pilot content ids from modules.json, and so get_concept/get_module
+    know to look here when a pilot lookup misses.
+    """
+    slug = _slugify(name)
+    module_id = f"custom_{slug}_{uuid.uuid4().hex[:8]}"
+    module = {
+        "id": module_id,
+        "name": name,
+        "topic_description": topic_description,
+        "is_custom": True,
+        "created_at": datetime.utcnow().isoformat(),
+        "sources": sources,
+        "concepts": [
+            {
+                "id": f"custom:{module_id}:{_slugify(c['name'])}",
+                "name": c["name"],
+                "bloom_level": c["bloom_level"],
+            }
+            for c in concepts
+        ],
+    }
+
+    path = _custom_modules_path(user_id)
+    existing = _read_custom_file(path)
+    existing.append(module)
+    with open(path, "w") as f:
+        json.dump({"modules": existing}, f, indent=2)
+
+    return module
+
+
+def get_custom_concept(concept_id: str) -> dict | None:
+    """
+    Scans every user's custom-module file for a concept id. This is safe
+    without a user_id because concept ids embed a per-module uuid, so a
+    global scan can't collide across accounts — needed because callers like
+    the dialogue orchestrator only have a concept_id, not the learner's
+    identity, at that point in the pipeline.
+    """
+    if not _CUSTOM_MODULES_DIR.exists():
+        return None
+    for path in _CUSTOM_MODULES_DIR.glob("*.json"):
+        for module in _read_custom_file(path):
+            for concept in module["concepts"]:
+                if concept["id"] == concept_id:
+                    return {
+                        **concept,
+                        "module_id": module["id"],
+                        "module_name": module["name"],
+                        "is_custom": True,
+                    }
+    return None
+
+
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.strip().lower()).strip("-")
+    return slug[:60] or "topic"
 
 
 def get_pair(pair_id: str) -> dict | None:

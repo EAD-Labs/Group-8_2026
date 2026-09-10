@@ -143,6 +143,7 @@ export default function Classroom() {
   const [guesses, setGuesses] = useState<Record<string, string>>({})
   const [question, setQuestion] = useState('')
   const [asking, setAsking] = useState(false)
+  const [expandedHistoryTurn, setExpandedHistoryTurn] = useState<string | null>(null)
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [recording, setRecording] = useState(false)
   const [voiceSubmitting, setVoiceSubmitting] = useState(false)
@@ -355,20 +356,32 @@ export default function Classroom() {
           </div>
         )}
 
-        {/* compact recap strip of what already happened */}
+        {/* compact recap strip of what already happened — click any bubble
+            to read it in full (the thing you asked shouldn't be stuck
+            behind a truncated one-liner you can't open) */}
         {historyTurns.length > 0 && (
           <div className="bg-white/70 border border-slate-200 rounded-2xl px-4 py-3 overflow-x-auto">
             <div className="flex gap-3 min-w-max">
               {historyTurns.map((turn) => {
                 const m = PERSONA[turn.speaker] || PERSONA.teacher
                 const Icon = m.icon
+                const isOpen = expandedHistoryTurn === turn.id
                 return (
-                  <div key={turn.id} className="flex items-center gap-1.5 opacity-60 max-w-[220px] shrink-0">
-                    <div className={`w-5 h-5 rounded-full ${m.bg} text-white flex items-center justify-center shrink-0`}>
+                  <button
+                    key={turn.id}
+                    type="button"
+                    onClick={() => setExpandedHistoryTurn(isOpen ? null : turn.id)}
+                    className={`flex items-start gap-1.5 text-left rounded-lg px-1.5 -mx-1.5 py-1 transition-opacity shrink-0 ${
+                      isOpen ? 'max-w-xs opacity-100 bg-slate-50' : 'max-w-[220px] opacity-60 hover:opacity-90'
+                    }`}
+                    aria-expanded={isOpen}
+                    title={turn.turn_type === 'learner_question' ? 'Your question — click to read in full' : undefined}
+                  >
+                    <div className={`w-5 h-5 rounded-full ${m.bg} text-white flex items-center justify-center shrink-0 mt-0.5`}>
                       <Icon size={11} />
                     </div>
-                    <p className="text-xs text-slate-500 truncate">{turn.content}</p>
-                  </div>
+                    <p className={`text-xs text-slate-500 ${isOpen ? 'whitespace-normal' : 'truncate'}`}>{turn.content}</p>
+                  </button>
                 )
               })}
               <div ref={recapEndRef} />

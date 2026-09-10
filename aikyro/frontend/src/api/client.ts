@@ -70,6 +70,9 @@ export const api = {
 
   getModules: () => request('/topics/modules'),
 
+  createCustomModule: (topic: string) =>
+    request('/topics/custom-modules', { method: 'POST', body: JSON.stringify({ topic }) }),
+
   getD03Status: () => request('/topics/d03-status'),
 
   startSession: (conceptId: string) =>
@@ -84,6 +87,8 @@ export const api = {
 
   askQuestion: (sessionId: string, question: string) =>
     request(`/classroom/${sessionId}/question`, { method: 'POST', body: JSON.stringify({ question }) }),
+
+  getQuestionHistory: () => request('/classroom/questions'),
 
   recordInteractionEvent: (payload: {
     turn_id: string

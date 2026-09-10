@@ -6,6 +6,7 @@ import Classroom from './pages/Classroom'
 import Checkpoint from './pages/Checkpoint'
 import Progress from './pages/Progress'
 import Quizzes from './pages/Quizzes'
+import QuestionHistory from './pages/QuestionHistory'
 import Settings from './pages/Settings'
 import About from './pages/About'
 
@@ -75,6 +76,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Quizzes />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/questions"
+          element={
+            <ProtectedRoute>
+              <QuestionHistory />
             </ProtectedRoute>
           }
         />

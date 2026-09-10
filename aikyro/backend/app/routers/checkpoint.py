@@ -31,7 +31,7 @@ async def submit_checkpoint(
     concept_name = concept["name"] if concept else (record.topic_name if record else session.concept_id)
     combined_answer = " ".join(str(v).strip() for v in payload.answers.values() if str(v).strip())
 
-    passed, score, _feedback = await grade_answer(
+    passed, score, feedback = await grade_answer(
         prompt=f"Checkpoint on {concept_name}: explain what you understood.",
         verified_text=record.verified_text if record else "",
         learner_answer=combined_answer,
@@ -41,4 +41,4 @@ async def submit_checkpoint(
     result = record_checkpoint(db, session, payload.answers, score, passed)
     session.completed_at = session.completed_at or datetime.utcnow()
     db.commit()
-    return result
+    return {"passed": result.passed, "score": result.score, "feedback": feedback}

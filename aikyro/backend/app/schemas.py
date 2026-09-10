@@ -29,6 +29,23 @@ class ModuleOut(BaseModel):
     id: str
     name: str
     concepts: list[dict]
+    is_custom: bool = False
+    topic_description: str | None = None
+    sources: list[dict] = []
+
+
+class CustomModuleCreateRequest(BaseModel):
+    topic: str
+
+
+class QuestionHistoryItem(BaseModel):
+    session_id: str
+    turn_id: str
+    concept_id: str
+    concept_name: str
+    question: str
+    answer: str | None
+    asked_at: datetime
 
 
 class StartSessionRequest(BaseModel):
@@ -65,6 +82,7 @@ class CheckpointSubmitRequest(BaseModel):
 class CheckpointResultOut(BaseModel):
     passed: bool
     score: float
+    feedback: str = ""
 
     class Config:
         from_attributes = True
@@ -107,6 +125,7 @@ class QuizSubmitRequest(BaseModel):
 class QuizSubmitResponse(BaseModel):
     passed: bool
     score: float
+    feedback: str = ""
     points_awarded: int
     newly_awarded_badges: list[str] = []
 

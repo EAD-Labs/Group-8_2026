@@ -113,7 +113,7 @@ async def submit_quiz(
     concept = get_concept(quiz.concept_id)
     concept_name = concept["name"] if concept else (record.topic_name if record else quiz.concept_id)
 
-    passed, score, _feedback = await grade_answer(
+    passed, score, feedback = await grade_answer(
         prompt=quiz.prompt or "",
         verified_text=record.verified_text if record else "",
         learner_answer=payload.answer,
@@ -130,7 +130,9 @@ async def submit_quiz(
     points_awarded = (user.total_points or 0) - points_before
     newly_awarded = _check_badges(db, user.id) if passed else []
 
-    return QuizSubmitResponse(passed=passed, score=score, points_awarded=points_awarded, newly_awarded_badges=newly_awarded)
+    return QuizSubmitResponse(
+        passed=passed, score=score, feedback=feedback, points_awarded=points_awarded, newly_awarded_badges=newly_awarded
+    )
 
 
 @router.post("/doubts/{doubt_id}/close")
