@@ -139,11 +139,13 @@ export default function Classroom() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const [turns, setTurns] = useState<Turn[]>([])
   const [streamDone, setStreamDone] = useState(false)
+  const [pacedTurns, setPacedTurns] = useState<Turn[]>([])
+  const pacingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestTurnsRef = useRef<Turn[]>([])
   const [revealedHints, setRevealedHints] = useState<Record<string, boolean>>({})
   const [guesses, setGuesses] = useState<Record<string, string>>({})
   const [question, setQuestion] = useState('')
   const [asking, setAsking] = useState(false)
-  const [expandedHistoryTurn, setExpandedHistoryTurn] = useState<string | null>(null)
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [recording, setRecording] = useState(false)
   const [voiceSubmitting, setVoiceSubmitting] = useState(false)
@@ -166,7 +168,6 @@ export default function Classroom() {
   const chunksRef = useRef<Blob[]>([])
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const spokenTurnIds = useRef<Set<string>>(new Set())
-  const recapEndRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -188,24 +189,52 @@ export default function Classroom() {
     api.getVoiceStatus().then((s) => setVoiceEnabled(!!s.enabled)).catch(() => setVoiceEnabled(false))
   }, [])
 
-  // The room freezes on the first unanswered hint/blank — like actually
-  // being called on — instead of racing ahead while turns keep streaming in
-  // behind the scenes. Anything that arrived after it stays hidden until you
-  // respond, then the lecture "catches up" to the real latest turn.
-  const pendingInteractive = turns.find(
+  latestTurnsRef.current = turns
+
+  // Pace the simulated classroom conversation so every turn gets a full
+  // 15 seconds on screen before the next person speaks. The stream can arrive
+  // faster in the background, but the learner only sees one paced turn at a time.
+  const hasPendingInteractive = pacedTurns.some(
     (t) => (t.turn_type === 'blank' || t.turn_type === 'hint') && !revealedHints[t.id]
   )
-  const currentTurn = pendingInteractive || (turns.length ? turns[turns.length - 1] : null)
-  const currentIndex = currentTurn ? turns.findIndex((t) => t.id === currentTurn.id) : -1
-  const visibleTurns = currentIndex >= 0 ? turns.slice(0, currentIndex + 1) : []
-  const historyTurns = currentIndex > 0 ? turns.slice(0, currentIndex) : []
-  const lastTeacherTurn = [...visibleTurns].reverse().find((t) => t.speaker === 'teacher')
-  const boardText = lastTeacherTurn?.content ?? 'Welcome — class is about to begin.'
-  const calledOn = currentTurn?.turn_type === 'blank' || currentTurn?.turn_type === 'hint'
 
   useEffect(() => {
-    recapEndRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'end' })
-  }, [historyTurns.length])
+    if (pacedTurns.length >= latestTurnsRef.current.length || pacingTimerRef.current || hasPendingInteractive) return
+
+    if (pacedTurns.length === 0) {
+      setPacedTurns([latestTurnsRef.current[0]])
+      return
+    }
+
+    pacingTimerRef.current = setTimeout(() => {
+      pacingTimerRef.current = null
+      setPacedTurns((prev) => latestTurnsRef.current.slice(0, prev.length + 1))
+    }, 15000)
+
+    return () => {
+      if (pacingTimerRef.current) {
+        clearTimeout(pacingTimerRef.current)
+        pacingTimerRef.current = null
+      }
+    }
+  }, [turns.length, pacedTurns.length, hasPendingInteractive])
+
+  useEffect(() => () => {
+    if (pacingTimerRef.current) clearTimeout(pacingTimerRef.current)
+  }, [])
+
+  // The room freezes on the first unanswered hint/blank — like actually
+  // being called on — instead of racing ahead while turns keep streaming in
+  // behind the scenes.
+  const pendingInteractive = pacedTurns.find(
+    (t) => (t.turn_type === 'blank' || t.turn_type === 'hint') && !revealedHints[t.id]
+  )
+  const currentTurn = pendingInteractive || (pacedTurns.length ? pacedTurns[pacedTurns.length - 1] : null)
+  const currentIndex = currentTurn ? pacedTurns.findIndex((t) => t.id === currentTurn.id) : -1
+  const visibleTurns = currentIndex >= 0 ? pacedTurns.slice(0, currentIndex + 1) : []
+  const calledOn = currentTurn?.turn_type === 'blank' || currentTurn?.turn_type === 'hint'
+  const waitingForNextTurn = pacedTurns.length < turns.length && !pendingInteractive
+  const boardText = 'Listen • Think • Discuss'
 
   // speak newly-spotlighted AI turns aloud when speak-mode is on
   useEffect(() => {
@@ -356,41 +385,9 @@ export default function Classroom() {
           </div>
         )}
 
-        {/* compact recap strip of what already happened — click any bubble
-            to read it in full (the thing you asked shouldn't be stuck
-            behind a truncated one-liner you can't open) */}
-        {historyTurns.length > 0 && (
-          <div className="bg-white/70 border border-slate-200 rounded-2xl px-4 py-3 overflow-x-auto">
-            <div className="flex gap-3 min-w-max">
-              {historyTurns.map((turn) => {
-                const m = PERSONA[turn.speaker] || PERSONA.teacher
-                const Icon = m.icon
-                const isOpen = expandedHistoryTurn === turn.id
-                return (
-                  <button
-                    key={turn.id}
-                    type="button"
-                    onClick={() => setExpandedHistoryTurn(isOpen ? null : turn.id)}
-                    className={`flex items-start gap-1.5 text-left rounded-lg px-1.5 -mx-1.5 py-1 transition-opacity shrink-0 ${
-                      isOpen ? 'max-w-xs opacity-100 bg-slate-50' : 'max-w-[220px] opacity-60 hover:opacity-90'
-                    }`}
-                    aria-expanded={isOpen}
-                    title={turn.turn_type === 'learner_question' ? 'Your question — click to read in full' : undefined}
-                  >
-                    <div className={`w-5 h-5 rounded-full ${m.bg} text-white flex items-center justify-center shrink-0 mt-0.5`}>
-                      <Icon size={11} />
-                    </div>
-                    <p className={`text-xs text-slate-500 ${isOpen ? 'whitespace-normal' : 'truncate'}`}>{turn.content}</p>
-                  </button>
-                )
-              })}
-              <div ref={recapEndRef} />
-            </div>
-          </div>
-        )}
-
-        {/* the classroom */}
-        <div className="relative rounded-3xl border border-slate-200 overflow-hidden">
+        {/* classroom + live conversation */}
+        <div className="classroom-layout">
+          <div className="relative rounded-3xl border border-slate-200 overflow-hidden classroom-stage">
           {/* walls */}
           <div className="absolute inset-0" style={{ backgroundColor: '#E4E7DD' }} />
           <div className="absolute left-0 right-0 bottom-0 h-[38%]" style={{ backgroundColor: '#D7C4A3' }} />
@@ -428,7 +425,7 @@ export default function Classroom() {
           </div>
 
           <div className="relative p-6 pb-4">
-            {/* blackboard + teacher */}
+            {/* teacher + blackboard: the board stays visual; dialogue lives in the transcript */}
             <div className="flex items-end justify-center gap-4 mb-6">
               <div className="flex flex-col items-center shrink-0">
                 {calledOn && (
@@ -458,18 +455,19 @@ export default function Classroom() {
                   className="rounded-xl p-5 shadow-inner border-[6px] relative"
                   style={{ backgroundColor: '#28352F', borderColor: '#8B5E34' }}
                 >
-                  {ttsSupported && lastTeacherTurn && (
+                  {ttsSupported && (
                     <button
-                      onClick={() => speakText(boardText)}
+                      onClick={() => speakText(currentTurn?.content || boardText)}
                       className="absolute top-2 right-2 text-white/30 hover:text-white transition-colors"
                       aria-label="Read board aloud"
                     >
                       <Volume2 size={13} />
                     </button>
                   )}
-                  <p className="font-display text-white text-[15px] leading-relaxed text-center pr-4">
+                  <p className="font-display text-white text-[18px] leading-relaxed text-center pr-4">
                     {boardText}
                   </p>
+                  <p className="text-[10px] text-white/50 text-center mt-2 tracking-[0.18em] uppercase">Class discussion is shown at right</p>
                 </div>
                 <div className="h-2 rounded-b-sm mx-3 relative" style={{ backgroundColor: '#8B5E34' }}>
                   <div className="absolute left-4 -top-0.5 w-3 h-1.5 bg-white/80 rounded-full" />
@@ -487,47 +485,82 @@ export default function Classroom() {
 
             {/* front row — basic student | you | advanced student */}
             <div className="flex justify-center items-end gap-10 mb-1">
-              <StudentDesk persona="basic_student" speaking={basicSpeaking} speechText={basicSpeaking ? currentTurn?.content : undefined} />
+              <StudentDesk persona="basic_student" speaking={basicSpeaking} />
               <StudentDesk
                 persona="learner"
                 speaking={learnerSpeaking}
-                speechText={learnerSpeaking ? currentTurn?.content : undefined}
                 calledOn={calledOn}
               />
-              <StudentDesk persona="advanced_student" speaking={advancedSpeaking} speechText={advancedSpeaking ? currentTurn?.content : undefined} />
+              <StudentDesk persona="advanced_student" speaking={advancedSpeaking} />
             </div>
 
-            {/* your turn — answer card, appears right under your desk */}
+            {waitingForNextTurn && (
+              <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mt-4">
+                <Loader2 size={13} className="animate-spin" /> Next speaker in 15 seconds…
+              </div>
+            )}
+          </div>
+          </div>
+
+          <aside className="class-transcript">
+            <div className="class-transcript-header">
+              <div>
+                <p className="class-transcript-kicker">Class transcript</p>
+                <h2>Follow the discussion</h2>
+              </div>
+              <span className="class-live-pill"><span /> LIVE</span>
+            </div>
+
+            <div className="class-transcript-list">
+              {visibleTurns.length === 0 && (
+                <div className="class-empty-transcript">
+                  <GraduationCap size={20} />
+                  <p>The class is getting ready…</p>
+                </div>
+              )}
+              {visibleTurns.map((turn, index) => {
+                const meta = PERSONA[turn.speaker] || PERSONA.teacher
+                const Icon = meta.icon
+                const isCurrent = index === visibleTurns.length - 1
+                return (
+                  <div key={turn.id} className={`transcript-turn ${isCurrent ? 'is-current' : ''} ${turn.speaker === 'learner' ? 'is-learner' : ''}`}>
+                    <div className={`transcript-avatar ${meta.bg}`}><Icon size={13} /></div>
+                    <div className="transcript-body">
+                      <div className="transcript-name-row">
+                        <strong>{meta.label}</strong>
+                        {isCurrent && <span className="speaking-label">speaking</span>}
+                      </div>
+                      <p>{turn.content}</p>
+                    </div>
+                  </div>
+                )
+              })}
+              {waitingForNextTurn && (
+                <div className="transcript-waiting">
+                  <span className="typing-dots"><i /><i /><i /></span>
+                  Next response is coming…
+                </div>
+              )}
+            </div>
+
             {calledOn && currentTurn && (
-              <div className="max-w-md mx-auto mt-4 border-2 border-dashed border-amber rounded-2xl bg-white/90 backdrop-blur-sm p-4">
-                <p className="text-xs font-semibold text-amber mb-2 uppercase tracking-wide">
-                  {currentTurn.turn_type === 'blank' ? 'Fill in the blank' : 'Your guess, before the answer'}
-                </p>
-                <div className="flex items-center gap-2">
+              <div className="transcript-response">
+                <p>{currentTurn.turn_type === 'blank' ? 'Your answer' : 'Your guess, before the answer'}</p>
+                <div className="transcript-response-row">
                   <input
                     autoFocus
-                    className="border border-amber/40 bg-white rounded-xl px-3 py-2 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-amber/30"
-                    placeholder={currentTurn.turn_type === 'blank' ? 'Your answer…' : 'Your guess…'}
+                    placeholder={currentTurn.turn_type === 'blank' ? 'Type your answer…' : 'Type your guess…'}
                     value={guesses[currentTurn.id] || ''}
                     onChange={(e) => setGuesses((prev) => ({ ...prev, [currentTurn.id]: e.target.value }))}
                     onKeyDown={(e) => e.key === 'Enter' && submitGuess(currentTurn)}
                   />
-                  <button
-                    className="bg-ink text-white rounded-xl px-4 py-2 text-sm font-medium hover:bg-cobalt-dark transition-colors shrink-0"
-                    onClick={() => submitGuess(currentTurn)}
-                  >
+                  <button onClick={() => submitGuess(currentTurn)}>
                     {currentTurn.turn_type === 'blank' ? 'Answer' : 'Reveal'}
                   </button>
                 </div>
               </div>
             )}
-
-            {!streamDone && !pendingInteractive && (
-              <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mt-4">
-                <Loader2 size={13} className="animate-spin" /> Class is in session…
-              </div>
-            )}
-          </div>
+          </aside>
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-3 flex gap-2 items-center">
@@ -608,7 +641,7 @@ export default function Classroom() {
           </div>
         )}
 
-        {streamDone && !pendingInteractive && currentIndex === turns.length - 1 && (
+        {streamDone && !pendingInteractive && pacedTurns.length === turns.length && currentIndex === pacedTurns.length - 1 && (
           <div className="flex justify-end">
             <button
               className="flex items-center gap-1.5 bg-ink text-white rounded-lg px-5 py-2.5 text-sm font-medium hover:bg-cobalt-dark transition-colors"
