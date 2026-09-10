@@ -5,3 +5,13 @@ __pycache__/
 node_modules/
 dist/
 .DS_Store
+
+# virtualenvs — created per-developer, never shared
+.venv/
+venv/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+*.tsbuildinfo

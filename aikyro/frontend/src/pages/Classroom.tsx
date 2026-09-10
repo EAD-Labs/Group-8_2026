@@ -2,17 +2,31 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Mic, Square, Send, Volume2, VolumeX, ArrowRight, Loader2,
-  GraduationCap, BookOpen, Brain, User, Hand,
+  GraduationCap, BookOpen, Brain, User, Hand, CheckCircle2, Lightbulb, WifiOff,
 } from 'lucide-react'
 import NavShell from '../components/NavShell'
 import { api } from '../api/client'
 
 type Turn = {
   id: string
+  turn_index: number
   speaker: 'teacher' | 'basic_student' | 'advanced_student' | 'learner'
   turn_type: 'dialogue' | 'hint' | 'blank' | 'learner_question'
   content: string
   target_bloom_level: string | null
+  // Present on blank turns. The accepted answers stay on the server — the
+  // browser never sees them, which is what makes the gate mean anything.
+  blank_id?: string | null
+}
+
+// The server's verdict on a committed guess. `is_correct` is null when the turn
+// had no judgeable answer (a hint, or a reveal with no guess) — distinct from
+// false, which means judged and wrong.
+type AttemptResult = {
+  is_correct: boolean | null
+  hint: string | null
+  feedback: string
+  doubt_logged: boolean
 }
 
 const PERSONA: Record<
@@ -25,31 +39,15 @@ const PERSONA: Record<
   learner: { label: 'You', icon: User, bg: 'bg-learner', text: 'text-learner', border: 'border-learner/30' },
 }
 
-// Web Speech API isn't in default TS lib types — minimal ambient declarations.
-interface SpeechRecognitionResultLike {
-  isFinal: boolean
-  0: { transcript: string }
-}
-interface SpeechRecognitionEventLike extends Event {
-  results: ArrayLike<SpeechRecognitionResultLike>
-  resultIndex: number
-}
-interface SpeechRecognitionLike extends EventTarget {
-  lang: string
-  interimResults: boolean
-  continuous: boolean
-  start: () => void
-  stop: () => void
-  onresult: ((e: SpeechRecognitionEventLike) => void) | null
-  onend: (() => void) | null
-  onerror: (() => void) | null
-}
-declare global {
-  interface Window {
-    SpeechRecognition?: new () => SpeechRecognitionLike
-    webkitSpeechRecognition?: new () => SpeechRecognitionLike
-  }
-}
+// The Web Speech API (window.SpeechRecognition / webkitSpeechRecognition) used
+// to power voice question input here. It was removed: it is Chrome-only, gives no
+// word timings, and sends the learner's audio to Google — while HLD 11.4 states
+// raw media is "never transmitted to third parties" (PROJECT.md D6). Dictation
+// now records with MediaRecorder and posts to our own backend, the same path the
+// teach-back clip already used.
+//
+// Text-to-speech (window.speechSynthesis) is a different API and is kept: it
+// sends nothing anywhere, it only reads text aloud locally.
 
 function SpeechBubble({ text, color }: { text: string; color: string }) {
   return (
@@ -157,34 +155,97 @@ export default function Classroom() {
   const [voiceError, setVoiceError] = useState<string | null>(null)
 
   const [speakMode, setSpeakMode] = useState(false)
-  const [listening, setListening] = useState(false)
-  const speechSupported = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition)
   const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window
+
+  // Dictation: records with MediaRecorder and transcribes on our backend (D6).
+  // `dictationAvailable` is false while the backend transcriber is mocked, and the
+  // mic button is hidden rather than offering something that cannot work.
+  const [dictationAvailable, setDictationAvailable] = useState(false)
+  const [dictating, setDictating] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+
+  // The server's verdict per blank/hint turn, and whether a guess is in flight.
+  const [attempts, setAttempts] = useState<Record<string, AttemptResult>>({})
+  const [submittingGuess, setSubmittingGuess] = useState<string | null>(null)
+  const [streamError, setStreamError] = useState<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const dictationRecorderRef = useRef<MediaRecorder | null>(null)
+  const dictationChunksRef = useRef<Blob[]>([])
   const spokenTurnIds = useRef<Set<string>>(new Set())
   const recapEndRef = useRef<HTMLDivElement>(null)
+  // Highest turn_index received, so a reconnect resumes rather than replaying
+  // the lesson from turn 0 (HLD T2.10).
+  const lastTurnIndexRef = useRef<number>(-1)
   const navigate = useNavigate()
 
   useEffect(() => {
     if (!sessionId) return
-    const es = new EventSource(api.streamDialogueUrl(sessionId))
-    es.addEventListener('turn', (e) => {
-      const turn = JSON.parse((e as MessageEvent).data) as Turn
-      setTurns((prev) => [...prev, turn])
-    })
-    es.addEventListener('done', () => {
-      setStreamDone(true)
-      es.close()
-    })
-    es.onerror = () => es.close()
-    return () => es.close()
+    let es: EventSource | null = null
+    let cancelled = false
+
+    async function open() {
+      try {
+        // The stream is authenticated with a short-lived, session-scoped ticket,
+        // because EventSource cannot send an Authorization header (D3).
+        const { ticket } = await api.getStreamTicket(sessionId!)
+        if (cancelled) return
+
+        es = new EventSource(api.streamDialogueUrl(sessionId!, ticket))
+        es.addEventListener('turn', (e) => {
+          const turn = JSON.parse((e as MessageEvent).data) as Turn
+          lastTurnIndexRef.current = Math.max(lastTurnIndexRef.current, turn.turn_index)
+          // De-duplicate: a reconnect can re-deliver the boundary turn.
+          setTurns((prev) => (prev.some((t) => t.id === turn.id) ? prev : [...prev, turn]))
+        })
+        es.addEventListener('done', () => {
+          setStreamDone(true)
+          es?.close()
+        })
+        es.onerror = () => {
+          // EventSource reconnects on its own and sends Last-Event-ID, so the
+          // server resumes from the next turn. Reconcile against the full list
+          // anyway, so a learner is never left mid-lesson by a failed retry.
+          es?.close()
+          if (!cancelled) void reconcileTurns()
+        }
+      } catch {
+        if (!cancelled) void reconcileTurns()
+      }
+    }
+
+    async function reconcileTurns() {
+      try {
+        const body = await api.getTurns(sessionId!)
+        if (cancelled) return
+        setTurns(body.turns)
+        lastTurnIndexRef.current = body.turns.length - 1
+        setStreamDone(true)
+        setStreamError(null)
+      } catch {
+        if (!cancelled) setStreamError('Lost the connection to the classroom. Reload to pick up where you left off.')
+      }
+    }
+
+    void open()
+    return () => {
+      cancelled = true
+      es?.close()
+    }
   }, [sessionId])
 
   useEffect(() => {
-    api.getVoiceStatus().then((s) => setVoiceEnabled(!!s.enabled)).catch(() => setVoiceEnabled(false))
+    api
+      .getVoiceStatus()
+      .then((s) => {
+        setVoiceEnabled(!!s.enabled)
+        setDictationAvailable(!!s.transcription_usable)
+      })
+      .catch(() => {
+        setVoiceEnabled(false)
+        setDictationAvailable(false)
+      })
   }, [])
 
   // The room freezes on the first unanswered hint/blank — like actually
@@ -229,14 +290,32 @@ export default function Classroom() {
     window.speechSynthesis.speak(new SpeechSynthesisUtterance(text))
   }
 
-  function submitGuess(turn: Turn, correct: boolean | null = null) {
-    api.recordInteractionEvent({
-      turn_id: turn.id,
-      event_type: 'guess',
-      payload: { guess: guesses[turn.id] || '' },
-      is_correct: correct,
-    })
-    setRevealedHints((prev) => ({ ...prev, [turn.id]: true }))
+  // The guess goes to the server, which judges it against the blank's expected
+  // answers and writes the doubt-log entry. The browser sends no verdict — it
+  // does not have the answer, and shouldn't (PROJECT.md D1).
+  async function submitGuess(turn: Turn) {
+    if (!sessionId || submittingGuess) return
+    setSubmittingGuess(turn.id)
+    try {
+      const result = await api.submitBlankAttempt(sessionId, turn.id, guesses[turn.id] || '')
+      setAttempts((prev) => ({ ...prev, [turn.id]: result }))
+      setRevealedHints((prev) => ({ ...prev, [turn.id]: true }))
+    } catch {
+      // Never trap the learner behind a failed request: unfreeze the room and
+      // let the lesson continue. The attempt is simply not recorded.
+      setAttempts((prev) => ({
+        ...prev,
+        [turn.id]: {
+          is_correct: null,
+          hint: null,
+          feedback: "Couldn't reach the server to check that — carrying on.",
+          doubt_logged: false,
+        },
+      }))
+      setRevealedHints((prev) => ({ ...prev, [turn.id]: true }))
+    } finally {
+      setSubmittingGuess(null)
+    }
   }
 
   async function handleAsk(text?: string) {
@@ -244,50 +323,66 @@ export default function Classroom() {
     if (!q || !sessionId) return
     setAsking(true)
     try {
+      // The server persists both turns and returns them with their real ids and
+      // indices; appending hand-built stand-ins would put turns in the list that
+      // no reconnect could reconcile against.
       const res = await api.askQuestion(sessionId, q)
-      setTurns((prev) => [
-        ...prev,
-        { id: `learner-${Date.now()}`, speaker: 'learner', turn_type: 'learner_question', content: q, target_bloom_level: null },
-        { id: res.id, speaker: 'teacher', turn_type: 'dialogue', content: res.content, target_bloom_level: null },
-      ])
+      setTurns((prev) => [...prev, res.question_turn as Turn, res.answer_turn as Turn])
+      lastTurnIndexRef.current = (res.answer_turn as Turn).turn_index
       setQuestion('')
     } finally {
       setAsking(false)
     }
   }
 
-  function toggleListening() {
-    if (!speechSupported) return
-    const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!Ctor) return
-
-    if (listening) {
-      recognitionRef.current?.stop()
-      setListening(false)
-      return
-    }
-
-    const recognition = new Ctor()
-    recognition.lang = 'en-US'
-    recognition.interimResults = true
-    recognition.continuous = false
-    recognition.onresult = (e) => {
-      let finalTranscript = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const result = e.results[i]
-        if (result.isFinal) finalTranscript += result[0].transcript
-        else setQuestion(result[0].transcript)
+  // Dictation via MediaRecorder -> our backend (D6). The transcript lands in the
+  // question box for the learner to read and edit before sending — it is never
+  // posted on their behalf, because a transcription error would otherwise put
+  // words in their mouth.
+  async function startDictation() {
+    if (!dictationAvailable) return
+    setVoiceError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      dictationChunksRef.current = []
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) dictationChunksRef.current.push(e.data)
       }
-      if (finalTranscript) setQuestion(finalTranscript)
+      recorder.onstop = () => stream.getTracks().forEach((t) => t.stop())
+      recorder.start()
+      dictationRecorderRef.current = recorder
+      setDictating(true)
+    } catch {
+      setVoiceError('Could not access the microphone. You can type your question instead.')
     }
-    recognition.onend = () => setListening(false)
-    recognition.onerror = () => {
-      setListening(false)
-      setVoiceError('Could not hear you clearly — try typing instead.')
+  }
+
+  async function stopDictation() {
+    const recorder = dictationRecorderRef.current
+    if (!recorder || !sessionId) return
+    recorder.stop()
+    setDictating(false)
+    setTranscribing(true)
+    // give the recorder a moment to flush its final chunk
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    try {
+      const blob = new Blob(dictationChunksRef.current, {
+        type: dictationChunksRef.current[0]?.type || 'audio/webm',
+      })
+      const res = await api.transcribeClip(sessionId, blob)
+      if (res.ok && res.transcript) setQuestion(res.transcript)
+      else setVoiceError('Could not make out the audio — please type your question.')
+    } catch (err) {
+      setVoiceError(
+        err instanceof Error && err.message.includes('503')
+          ? 'Voice input is not available yet — please type your question.'
+          : 'Transcription failed — please type your question.',
+      )
+    } finally {
+      setTranscribing(false)
     }
-    recognitionRef.current = recognition
-    recognition.start()
-    setListening(true)
   }
 
   async function startRecording() {
@@ -331,6 +426,13 @@ export default function Classroom() {
     }
   }
 
+  // The most recently answered blank/hint, so its verdict stays visible after
+  // the room unfreezes and moves on.
+  const lastAttemptTurn = [...visibleTurns]
+    .reverse()
+    .find((t) => (t.turn_type === 'blank' || t.turn_type === 'hint') && attempts[t.id])
+  const lastAttempt = lastAttemptTurn ? attempts[lastAttemptTurn.id] : null
+
   const basicSpeaking = currentTurn?.speaker === 'basic_student'
   const advancedSpeaking = currentTurn?.speaker === 'advanced_student'
   const learnerSpeaking = currentTurn?.speaker === 'learner'
@@ -338,6 +440,13 @@ export default function Classroom() {
   return (
     <NavShell title="Classroom">
       <div className="space-y-4">
+        {streamError && (
+          <div className="flex items-start gap-2 bg-amber-light border border-amber/30 rounded-2xl px-4 py-3">
+            <WifiOff size={15} className="text-amber shrink-0 mt-0.5" />
+            <p className="text-sm text-amber">{streamError}</p>
+          </div>
+        )}
+
         {ttsSupported && (
           <div className="flex justify-end">
             <button
@@ -500,12 +609,55 @@ export default function Classroom() {
                     onKeyDown={(e) => e.key === 'Enter' && submitGuess(currentTurn)}
                   />
                   <button
-                    className="bg-ink text-white rounded-xl px-4 py-2 text-sm font-medium hover:bg-cobalt-dark transition-colors shrink-0"
+                    className="bg-ink text-white rounded-xl px-4 py-2 text-sm font-medium hover:bg-cobalt-dark transition-colors shrink-0 disabled:opacity-50"
+                    disabled={submittingGuess === currentTurn.id}
                     onClick={() => submitGuess(currentTurn)}
                   >
-                    {currentTurn.turn_type === 'blank' ? 'Answer' : 'Reveal'}
+                    {submittingGuess === currentTurn.id
+                      ? 'Checking…'
+                      : currentTurn.turn_type === 'blank'
+                        ? 'Answer'
+                        : 'Reveal'}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* the verdict on the guess just committed, and the nudge that comes
+                with it. Shown after the room unfreezes, so the learner sees why
+                it moved on. */}
+            {lastAttempt && lastAttemptTurn && (
+              <div
+                className={`max-w-md mx-auto mt-3 rounded-2xl border p-4 bg-white/90 backdrop-blur-sm ${
+                  lastAttempt.is_correct === true ? 'border-basic/40' : 'border-amber/40'
+                }`}
+              >
+                <p
+                  className={`text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 ${
+                    lastAttempt.is_correct === true ? 'text-basic' : 'text-amber'
+                  }`}
+                >
+                  {lastAttempt.is_correct === true ? (
+                    <>
+                      <CheckCircle2 size={13} /> Correct
+                    </>
+                  ) : (
+                    <>
+                      <Lightbulb size={13} /> Noted
+                    </>
+                  )}
+                </p>
+                <p className="text-sm text-slate-700 mt-1.5">{lastAttempt.feedback}</p>
+                {lastAttempt.hint && (
+                  <p className="text-sm text-slate-600 mt-2 pl-3 border-l-2 border-slate-200">
+                    {lastAttempt.hint}
+                  </p>
+                )}
+                {lastAttempt.doubt_logged && (
+                  <p className="text-[11px] text-slate-400 mt-2">
+                    Added to your open doubts — you can close it from Progress once it clicks.
+                  </p>
+                )}
               </div>
             )}
 
@@ -521,20 +673,23 @@ export default function Classroom() {
           <Hand size={15} className="text-slate-300 ml-1 shrink-0" />
           <input
             className="border-0 focus:outline-none focus:ring-0 px-2 py-2 text-sm flex-1"
-            placeholder={listening ? 'Listening…' : 'Raise your hand to ask a question…'}
+            placeholder={
+              dictating ? 'Recording…' : transcribing ? 'Transcribing…' : 'Raise your hand to ask a question…'
+            }
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAsk()}
           />
-          {speechSupported && (
+          {dictationAvailable && (
             <button
-              onClick={toggleListening}
-              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                listening ? 'bg-learner text-white animate-pulse' : 'text-slate-400 hover:bg-slate-50'
+              onClick={() => (dictating ? stopDictation() : startDictation())}
+              disabled={transcribing}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors disabled:opacity-50 ${
+                dictating ? 'bg-learner text-white animate-pulse' : 'text-slate-400 hover:bg-slate-50'
               }`}
-              aria-label={listening ? 'Stop listening' : 'Ask by voice'}
+              aria-label={dictating ? 'Stop recording' : 'Ask by voice'}
             >
-              <Mic size={16} />
+              {transcribing ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} />}
             </button>
           )}
           <button

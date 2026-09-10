@@ -10,21 +10,39 @@ from app.models import User, MasteryRecord, DoubtLogEntry, QuizResult, Badge, Ve
 from app.schemas import PendingQuizOut, QuizSubmitRequest, QuizSubmitResponse
 from app.services.measurement_service import (
     comparative_report, record_retention_result, record_transfer_result,
-    close_doubt as close_doubt_service, BADGE_CATALOG, POINTS, _check_badges,
+    close_doubt as close_doubt_service, BADGE_CATALOG, _check_badges,
 )
 from app.services.grading_service import grade_answer
+from app.services.verification_engine import load_structured
 
 router = APIRouter(prefix="/progress", tags=["progress"])
+
+
+def _concept_name(concept_id: str, record: VerifiedKnowledgeRecord | None) -> str:
+    concept = get_concept(concept_id)
+    if concept:
+        return concept["name"]
+    if record and record.topic_name:
+        return record.topic_name
+    return concept_id
 
 
 @router.get("/me")
 def my_progress(db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
     """
-    Screen 2 data (HLD 9.3): per-concept state + target Bloom level, open
-    doubts in plain language, next scheduled delayed check, points/badges.
+    Screen 2 data (HLD 9.3): per-concept state + target Bloom level, open doubts
+    in plain language, next scheduled delayed check, points/badges.
+
+    Open doubts are real rows now rather than a structurally empty list — see
+    PROJECT.md D1 and the writers in measurement_service.
     """
     mastery = db.query(MasteryRecord).filter_by(user_id=user.id).all()
-    open_doubts = db.query(DoubtLogEntry).filter_by(user_id=user.id, closed=False).all()
+    open_doubts = (
+        db.query(DoubtLogEntry)
+        .filter_by(user_id=user.id, closed=False)
+        .order_by(DoubtLogEntry.created_at)
+        .all()
+    )
     pending_quizzes = (
         db.query(QuizResult)
         .filter_by(user_id=user.id, completed_at=None)
@@ -32,21 +50,34 @@ def my_progress(db: DBSession = Depends(get_db), user: User = Depends(get_curren
         .all()
     )
     badges = db.query(Badge).filter_by(user_id=user.id).order_by(Badge.awarded_at).all()
+    closed_count = db.query(DoubtLogEntry).filter_by(user_id=user.id, closed=True).count()
 
     return {
         "mastery": [
             {
                 "concept_id": m.concept_id,
+                "concept_name": _concept_name(m.concept_id, None),
                 "module_id": m.module_id,
                 "state": m.state.value,
                 "bloom_level_reached": m.bloom_level_reached.value if m.bloom_level_reached else None,
+                "next_retention_check": (
+                    m.next_retention_check.isoformat() if m.next_retention_check else None
+                ),
             }
             for m in mastery
         ],
         "open_doubts": [
-            {"id": d.id, "concept_id": d.concept_id, "misconception": d.misconception}
+            {
+                "id": d.id,
+                "concept_id": d.concept_id,
+                "concept_name": _concept_name(d.concept_id, None),
+                "misconception_id": d.misconception_id,
+                "misconception": d.misconception,
+                "source": d.source,
+            }
             for d in open_doubts
         ],
+        "doubts_closed": closed_count,
         "pending_retention_checks": [
             {"concept_id": q.concept_id, "scheduled_for": q.scheduled_for.isoformat()}
             for q in pending_quizzes if q.quiz_type == "retention"
@@ -68,9 +99,10 @@ def my_progress(db: DBSession = Depends(get_db), user: User = Depends(get_curren
 @router.get("/quizzes/pending", response_model=list[PendingQuizOut])
 def pending_quizzes(db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
     """
-    Retention checks + transfer problems not yet completed. Retention checks
-    aren't takeable until their scheduled date (HLD 6.6: never on the day the
-    concept was learned); transfer problems are available immediately.
+    Retention checks, transfer problems and linked questions not yet completed.
+    Retention checks aren't takeable until their scheduled date (HLD 6.6: never
+    on the day the concept was learned); transfer and linked questions are
+    available immediately.
     """
     quizzes = (
         db.query(QuizResult)
@@ -84,6 +116,7 @@ def pending_quizzes(db: DBSession = Depends(get_db), user: User = Depends(get_cu
             id=q.id,
             concept_id=q.concept_id,
             quiz_type=q.quiz_type,
+            linked_concept_id=q.linked_concept_id,
             prompt=q.prompt,
             scheduled_for=q.scheduled_for,
             available_now=q.scheduled_for <= now,
@@ -110,38 +143,60 @@ async def submit_quiz(
         .order_by(VerifiedKnowledgeRecord.created_at.desc())
         .first()
     )
-    concept = get_concept(quiz.concept_id)
-    concept_name = concept["name"] if concept else (record.topic_name if record else quiz.concept_id)
+    structured = load_structured(record) if record else None
+    if structured is None:
+        raise HTTPException(500, "No verified record for this concept")
 
-    passed, score, _feedback = await grade_answer(
-        prompt=quiz.prompt or "",
-        verified_text=record.verified_text if record else "",
-        learner_answer=payload.answer,
-        concept_name=concept_name,
+    result = await grade_answer(
+        prompt=quiz.prompt or "", record=structured, learner_answer=payload.answer
     )
 
     points_before = user.total_points or 0
     if quiz.quiz_type == "retention":
-        record_retention_result(db, quiz, passed, score, payload.answer)
+        record_retention_result(db, quiz, result.passed, result.score, payload.answer)
     else:
-        record_transfer_result(db, quiz, passed, score, payload.answer)
+        # transfer and linked questions share the same recording path — both are
+        # application evidence rather than delayed recall
+        record_transfer_result(db, quiz, result.passed, result.score, payload.answer)
 
     db.refresh(user)
     points_awarded = (user.total_points or 0) - points_before
-    newly_awarded = _check_badges(db, user.id) if passed else []
+    newly_awarded = _check_badges(db, user.id) if result.passed else []
 
-    return QuizSubmitResponse(passed=passed, score=score, points_awarded=points_awarded, newly_awarded_badges=newly_awarded)
+    return QuizSubmitResponse(
+        passed=result.passed,
+        score=result.score,
+        feedback=result.feedback,
+        points_awarded=points_awarded,
+        newly_awarded_badges=newly_awarded,
+    )
 
 
 @router.post("/doubts/{doubt_id}/close")
 def close_doubt(doubt_id: str, db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
-    entry = close_doubt_service(db, doubt_id)
-    if not entry or entry.user_id != user.id:
+    """
+    Close one of the caller's own doubts.
+
+    This endpoint previously had no authentication dependency at all, so any
+    signed-in user could close another learner's doubt and collect the points
+    (PROJECT.md D3). Ownership is now enforced at the route and again in the
+    service.
+    """
+    entry = close_doubt_service(db, doubt_id, user_id=user.id)
+    if not entry:
         raise HTTPException(404, "Doubt not found")
-    return {"id": entry.id, "closed": entry.closed}
+    return {"id": entry.id, "closed": entry.closed, "misconception_id": entry.misconception_id}
 
 
 @router.get("/comparative-report")
 def comparative(db: DBSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """What the client/evaluators see (HLD 6.6). Aggregates across the cohort — no auth restriction beyond login for now; lock down to staff-only once roles exist (HLD 4)."""
+    """
+    What the client and evaluators see (HLD 6.6).
+
+    Aggregates across the cohort, so it is login-gated but not per-learner. There
+    is no role system in the pilot (HLD 4 doesn't define one), so any signed-in
+    user can read it — lock this to a staff role as soon as roles exist. It
+    returns no free-text learner answers, only counts and means, which is what
+    makes that acceptable in the interim.
+    """
     return comparative_report(db)

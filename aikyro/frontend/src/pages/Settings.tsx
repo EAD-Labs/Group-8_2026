@@ -4,6 +4,13 @@ import { LogOut, Mic, Volume2 } from 'lucide-react'
 import NavShell from '../components/NavShell'
 import { api, clearToken } from '../api/client'
 
+type VoiceStatus = {
+  enabled: boolean
+  provider: string
+  transcription_usable: boolean
+  privacy_note: string
+}
+
 type Me = {
   id: string
   name: string
@@ -19,7 +26,10 @@ export default function Settings() {
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  const speechSupported = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  // Voice capability is a server fact now, not a browser one. Dictation and
+  // teach-back scoring both run on our own backend (PROJECT.md D6), so whether
+  // they work depends on how the backend is configured, not on the browser.
+  const [voice, setVoice] = useState<VoiceStatus | null>(null)
   const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window
 
   useEffect(() => {
@@ -28,6 +38,10 @@ export default function Settings() {
       .then(setMe)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load account info.'))
       .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    api.getVoiceStatus().then(setVoice).catch(() => setVoice(null))
   }, [])
 
   if (loading) return <NavShell title="Settings"><p className="text-sm text-slate-500">Loading…</p></NavShell>
@@ -66,26 +80,39 @@ export default function Settings() {
         )}
 
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="font-display font-semibold text-ink mb-3">Voice capability</h2>
+          <h2 className="font-display font-semibold text-ink mb-3">Voice &amp; privacy</h2>
           <div className="space-y-2.5 text-sm">
             <div className="flex items-center gap-2">
-              <Mic size={15} className={speechSupported ? 'text-basic' : 'text-slate-300'} />
-              <span className={speechSupported ? 'text-ink' : 'text-slate-400'}>
-                Ask questions by voice {speechSupported ? '— supported in this browser' : '— not supported here (try Chrome)'}
+              <Mic size={15} className={voice?.transcription_usable ? 'text-basic' : 'text-slate-300'} />
+              <span className={voice?.transcription_usable ? 'text-ink' : 'text-slate-400'}>
+                Ask questions by voice{' '}
+                {voice?.transcription_usable
+                  ? '— available'
+                  : '— not available yet, so the classroom asks you to type instead'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Mic size={15} className={voice?.enabled ? 'text-basic' : 'text-slate-300'} />
+              <span className={voice?.enabled ? 'text-ink' : 'text-slate-400'}>
+                Teach-back scoring {voice?.enabled ? '— available' : '— switched off'}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <Volume2 size={15} className={ttsSupported ? 'text-basic' : 'text-slate-300'} />
               <span className={ttsSupported ? 'text-ink' : 'text-slate-400'}>
-                AI reads answers aloud {ttsSupported ? '— supported in this browser' : '— not supported here'}
+                Read the lesson aloud {ttsSupported ? '— supported in this browser' : '— not supported here'}
               </span>
             </div>
           </div>
-          <p className="text-xs text-slate-400 mt-3">
-            Both use your browser's built-in speech engine — no audio is sent anywhere for these two features.
-            The separate "teach-back" voice scoring in the classroom does send a short clip to the backend for
-            scoring, and never stores the raw audio.
-          </p>
+          <div className="text-xs text-slate-400 mt-3 space-y-1.5">
+            <p>
+              {voice?.privacy_note ??
+                'Audio is processed on our own backend and discarded; no clip is stored, and none is sent to a third-party speech service.'}
+            </p>
+            <p>
+              Reading the lesson aloud happens entirely in your browser and sends nothing anywhere.
+            </p>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-6">

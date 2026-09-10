@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import get_current_user
-from app.content.loader import load_content, d03_status, mark_pair_reviewed
+from app.content.loader import (
+    content_review_status, d03_status, load_content, mark_content_reviewed,
+    mark_pair_reviewed, public_modules,
+)
 from app.models import User
 
 router = APIRouter(prefix="/topics", tags=["topics"])
@@ -10,9 +13,12 @@ router = APIRouter(prefix="/topics", tags=["topics"])
 @router.get("/modules")
 def list_modules(user: User = Depends(get_current_user)):
     """Dashboard / Topic Setup screen data (HLD 9.1-9.2)."""
-    content = load_content()
+    # public_modules() strips each concept's blanks (expected answers) and
+    # checkpoint rubrics. Returning content["modules"] raw would ship every
+    # blank's accepted answers to the browser, which would make the blank gate
+    # and the checkpoint decorative.
     return {
-        "modules": content["modules"],
+        "modules": public_modules(),
         "pilot_pair_id": user.pilot_pair_id,
         "pilot_condition_map": user.pilot_condition_map,
     }
@@ -40,3 +46,30 @@ def review_pair(pair_id: str, user: User = Depends(get_current_user)):
     if not pair:
         raise HTTPException(404, "Unknown pair_id")
     return pair
+
+
+@router.get("/content-review-status")
+def get_content_review_status():
+    """
+    Which concepts still have TA/instructor-unreviewed authored content —
+    misconceptions and checkpoint rubrics (PROJECT.md §5).
+
+    Separate from D-03: that asks whether two paired concepts are equally hard,
+    this asks whether one concept's pedagogical content is sound. A pilot should
+    not run on unreviewed misconceptions, and this is how that stays visible
+    rather than living in a document.
+    """
+    return content_review_status()
+
+
+@router.post("/concepts/{concept_id}/mark-content-reviewed")
+def review_concept_content(concept_id: str, user: User = Depends(get_current_user)):
+    """
+    Record that a TA/instructor has checked this concept's misconceptions and
+    checkpoint rubrics. Same caveat as mark-reviewed below: no role system in the
+    pilot, so any logged-in user can call it for now.
+    """
+    result = mark_content_reviewed(concept_id, reviewed=True)
+    if not result:
+        raise HTTPException(404, "Unknown concept_id")
+    return result

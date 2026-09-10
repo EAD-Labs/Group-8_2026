@@ -1,5 +1,5 @@
 {
-  "_notes": "Edit this file, not the code, when the client changes content scope, concept lists, Bloom targets, or the comparative-evaluation pairing. Pairing below matches HLD v2.5 Section 6.4 and the D-03 decision-log entry (Section 16): Bloom-tier matching within a module. D-03 is still OPEN as of v2.5 pending a TA/instructor 'equally hard to a first-year' check on each pair -- flip difficulty_reviewed to true per pair once that happens (see app.content.loader.mark_pair_reviewed / POST /topics/pairs/{pair_id}/mark-reviewed). Two concepts are Understand/Analyse-only within their module and are intentionally excluded from graded_pairs -> they go in general_use_only.",
+  "_notes": "Edit this file, not the code, when the client changes content scope, concept lists, Bloom targets, misconceptions, checkpoint items, or the comparative-evaluation pairing. Pairing matches HLD Section 6.4 and the D-03 decision-log entry: Bloom-tier matching within a module. D-03 stays OPEN until a TA/instructor has done the 'equally hard to a first-year' check on each pair -- flip difficulty_reviewed per pair once that happens (see app.content.loader.mark_pair_reviewed / POST /topics/pairs/{pair_id}/mark-reviewed). Two concepts are Understand/Analyse-only within their module and are intentionally excluded from graded_pairs -> they go in general_use_only.",
   "modules": [
     {
       "id": "thermodynamics",
@@ -8,27 +8,405 @@
         {
           "id": "first_law_energy_accounting",
           "name": "First law and energy accounting",
-          "bloom_level": "apply"
+          "bloom_level": "apply",
+          "content_reviewed": false,
+          "key_terms": [
+            "internal energy",
+            "heat",
+            "work",
+            "system",
+            "surroundings",
+            "state function",
+            "path"
+          ],
+          "misconceptions": [
+            {
+              "id": "system_surroundings_conflated",
+              "statement": "Draws the boundary loosely, so energy leaving the system is counted as if it had vanished rather than entering the surroundings",
+              "probe": "Before any numbers: point at exactly what is inside your system. The energy that left it — where is it now?",
+              "learner_facing": "Deciding what counts as 'the system' before doing the accounting"
+            },
+            {
+              "id": "heat_as_stored_quantity",
+              "statement": "Talks about the heat 'contained in' a system, treating heat as a stored property rather than energy in transit across a boundary",
+              "probe": "Can you tell me how much heat is in this gas right now? If not, what quantity were you reaching for?",
+              "learner_facing": "Heat is a transfer, not something a system holds"
+            },
+            {
+              "id": "path_independence_misapplied",
+              "statement": "Assumes Q and W are fixed by the endpoints because delta-U is, so any path between two states is treated as interchangeable",
+              "probe": "Two different paths take this gas between the same two states. Which of delta-U, Q and W must come out the same, and which need not?",
+              "learner_facing": "delta-U depends only on the endpoints; Q and W depend on the route"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "fl_blank_state_function",
+              "prompt": "Of the three quantities in delta-U = Q - W, the one fixed entirely by the initial and final states is ____.",
+              "expected_answers": [
+                "delta-U",
+                "deltaU",
+                "internal energy",
+                "the change in internal energy",
+                "U",
+                "delta U"
+              ],
+              "misconception_id": "path_independence_misapplied",
+              "hint": "Two of the three depend on how you got there. One does not."
+            },
+            {
+              "id": "fl_blank_boundary",
+              "prompt": "Energy that leaves the system as heat does not disappear — it is now in the ____.",
+              "expected_answers": [
+                "surroundings",
+                "environment",
+                "the surroundings",
+                "surrounding"
+              ],
+              "misconception_id": "system_surroundings_conflated",
+              "hint": "The accounting has exactly two columns."
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "fl_cp_1",
+              "prompt": "A gas is compressed, and during the compression it also gives off heat. Account for the energy: say what happens to the internal energy and why, naming where each quantity goes.",
+              "bloom_level": "apply",
+              "rubric": [
+                "Identifies work done ON the gas as energy entering the system",
+                "Identifies heat given off as energy leaving the system to the surroundings",
+                "Concludes delta-U is the net of the two, rather than guessing a direction",
+                "Keeps the system boundary explicit throughout"
+              ],
+              "targets_misconception": "system_surroundings_conflated"
+            },
+            {
+              "id": "fl_cp_2",
+              "prompt": "Two processes take the same gas from state A to state B by different routes. A classmate says 'same endpoints, so Q must be the same both times.' Is that right? Explain.",
+              "bloom_level": "analyse",
+              "rubric": [
+                "Says no",
+                "States that delta-U is the same because internal energy is a state function",
+                "States that Q and W individually depend on the path",
+                "Notes that Q - W is nonetheless the same for both routes"
+              ],
+              "targets_misconception": "path_independence_misapplied"
+            }
+          ]
         },
         {
           "id": "sign_conventions_work_heat",
           "name": "Sign conventions for work and heat",
-          "bloom_level": "apply"
+          "bloom_level": "apply",
+          "content_reviewed": false,
+          "key_terms": [
+            "sign convention",
+            "work done by",
+            "work done on",
+            "heat absorbed",
+            "heat released",
+            "expansion",
+            "compression"
+          ],
+          "misconceptions": [
+            {
+              "id": "sign_convention_reversed",
+              "statement": "Applies the formula without first fixing which direction counts as positive, so work done by and work done on the system get the same sign",
+              "probe": "Work is done BY the gas as it expands. In the convention you are using, is W positive or negative?",
+              "learner_facing": "Stating which direction is positive before substituting numbers"
+            },
+            {
+              "id": "convention_switched_midproblem",
+              "statement": "Starts in delta-U = Q - W and finishes in delta-U = Q + W, switching convention partway so the answer flips sign",
+              "probe": "Read back the form of the first law you wrote down, then the one you used at the end. Are they the same statement?",
+              "learner_facing": "Staying in one convention from start to finish"
+            },
+            {
+              "id": "sign_read_as_magnitude",
+              "statement": "Treats a negative Q or W as an error or an impossibility rather than as a direction of transfer",
+              "probe": "Your answer came out as W = -200 J. What physical situation does that minus sign describe?",
+              "learner_facing": "A minus sign is a direction, not a mistake"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "sc_blank_expansion",
+              "prompt": "Using the convention delta-U = Q - W, where W is work done BY the gas: during an expansion, W is ____.",
+              "expected_answers": [
+                "positive",
+                "+",
+                "greater than zero",
+                "positive because the gas does work"
+              ],
+              "misconception_id": "sign_convention_reversed",
+              "hint": "The gas is the one doing the pushing here."
+            },
+            {
+              "id": "sc_blank_released",
+              "prompt": "A system releases heat to its surroundings. In the standard convention, Q is ____.",
+              "expected_answers": [
+                "negative",
+                "-",
+                "less than zero",
+                "negative because heat leaves the system"
+              ],
+              "misconception_id": "sign_read_as_magnitude",
+              "hint": "Energy is leaving the thing you are accounting for."
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "sc_cp_1",
+              "prompt": "A gas absorbs 500 J of heat and expands, doing 200 J of work on its surroundings. State your sign convention, then find delta-U.",
+              "bloom_level": "apply",
+              "rubric": [
+                "States the convention explicitly before substituting",
+                "Assigns Q = +500 J (heat into the system)",
+                "Assigns W consistently with the stated convention",
+                "Arrives at delta-U = +300 J",
+                "Uses one convention throughout without switching"
+              ],
+              "targets_misconception": "sign_convention_reversed"
+            },
+            {
+              "id": "sc_cp_2",
+              "prompt": "A classmate computes W = -350 J for a process and says the answer must be wrong because work cannot be negative. What would you tell them?",
+              "bloom_level": "understand",
+              "rubric": [
+                "Says the negative value is not an error",
+                "Explains that the sign encodes direction of transfer",
+                "Names which direction the minus sign corresponds to under a stated convention"
+              ],
+              "targets_misconception": "sign_read_as_magnitude"
+            }
+          ]
         },
         {
           "id": "reversible_irreversible_processes",
           "name": "Reversible/irreversible processes",
-          "bloom_level": "analyse"
+          "bloom_level": "analyse",
+          "content_reviewed": false,
+          "key_terms": [
+            "reversible",
+            "irreversible",
+            "quasi-static",
+            "equilibrium",
+            "dissipation",
+            "friction",
+            "entropy generation"
+          ],
+          "misconceptions": [
+            {
+              "id": "reversible_means_runnable_backwards",
+              "statement": "Reads reversible as 'can be run backwards', so any process with a physical return path is called reversible",
+              "probe": "You can certainly push that piston back to where it started. What else has to be true for the process to count as reversible?",
+              "learner_facing": "Reversible means system AND surroundings both return, leaving no trace"
+            },
+            {
+              "id": "quasistatic_equals_reversible",
+              "statement": "Treats slowness as sufficient: assumes any quasi-static process is reversible, overlooking dissipation",
+              "probe": "This compression is infinitely slow, but the piston rubs against the cylinder wall. Reversible?",
+              "learner_facing": "Slow is necessary but not enough — dissipation still spoils it"
+            },
+            {
+              "id": "irreversibility_as_speed_only",
+              "statement": "Attributes irreversibility entirely to how fast the process runs, missing friction, mixing and finite temperature differences as sources",
+              "probe": "Can you name a process that stays irreversible no matter how slowly you run it?",
+              "learner_facing": "Irreversibility has several sources, not just speed"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "ri_blank_both",
+              "prompt": "A process counts as reversible only if both the system and the ____ can be returned to their initial states with no net change.",
+              "expected_answers": [
+                "surroundings",
+                "environment",
+                "the surroundings"
+              ],
+              "misconception_id": "reversible_means_runnable_backwards",
+              "hint": "Returning the system alone is the easy half."
+            },
+            {
+              "id": "ri_blank_dissipation",
+              "prompt": "An infinitely slow compression with friction at the piston wall is still irreversible, because friction causes ____.",
+              "expected_answers": [
+                "dissipation",
+                "entropy generation",
+                "energy dissipation",
+                "entropy production",
+                "dissipation of energy"
+              ],
+              "misconception_id": "quasistatic_equals_reversible",
+              "hint": "Something is generated that you cannot un-generate."
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "ri_cp_1",
+              "prompt": "A gas is compressed infinitely slowly, but there is friction between the piston and the cylinder. A classmate calls this reversible because it is quasi-static. Analyse their claim.",
+              "bloom_level": "analyse",
+              "rubric": [
+                "Says the process is not reversible",
+                "Accepts that quasi-static is necessary but argues it is not sufficient",
+                "Identifies friction as dissipation / entropy generation",
+                "Connects to the requirement that the surroundings also return unchanged"
+              ],
+              "targets_misconception": "quasistatic_equals_reversible"
+            },
+            {
+              "id": "ri_cp_2",
+              "prompt": "Give one process that can be physically run backwards but is still irreversible, and say what makes it so.",
+              "bloom_level": "analyse",
+              "rubric": [
+                "Gives a concrete process with a physical return path",
+                "Identifies a source of irreversibility (friction, mixing, finite temperature difference, free expansion)",
+                "Explains that restoring the system leaves a net change in the surroundings"
+              ],
+              "targets_misconception": "reversible_means_runnable_backwards"
+            }
+          ]
         },
         {
           "id": "entropy_universe_spontaneous",
           "name": "Entropy of the universe in a spontaneous process",
-          "bloom_level": "analyse"
+          "bloom_level": "analyse",
+          "content_reviewed": false,
+          "key_terms": [
+            "entropy",
+            "universe",
+            "system",
+            "surroundings",
+            "spontaneous",
+            "total entropy",
+            "entropy change"
+          ],
+          "misconceptions": [
+            {
+              "id": "system_entropy_must_increase",
+              "statement": "Requires the system's own entropy to increase in any spontaneous process, so exothermic ordering processes like freezing look like violations",
+              "probe": "Water freezing below 0 C is spontaneous, and the ice is more ordered than the liquid. Which entropy is it that has to increase?",
+              "learner_facing": "It is the total entropy that must increase, not the system's"
+            },
+            {
+              "id": "surroundings_ignored",
+              "statement": "Computes delta-S for the system and stops, never evaluating the surroundings' contribution to the total",
+              "probe": "You have delta-S_system. What is the other term you need before you can call this spontaneous?",
+              "learner_facing": "The surroundings' entropy change is half the calculation"
+            },
+            {
+              "id": "entropy_as_disorder_only",
+              "statement": "Reasons about entropy purely as visual messiness, so it cannot be compared or computed for processes where 'tidiness' is ambiguous",
+              "probe": "Two gases mix at constant temperature — can you quantify the entropy change, rather than judging whether it looks messier?",
+              "learner_facing": "Entropy is a measurable quantity, not just 'disorder'"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "eu_blank_total",
+              "prompt": "For any spontaneous process, the quantity that must increase is the entropy of the ____.",
+              "expected_answers": [
+                "universe",
+                "total",
+                "system and surroundings",
+                "universe as a whole",
+                "total entropy"
+              ],
+              "misconception_id": "system_entropy_must_increase",
+              "hint": "Not the system on its own."
+            },
+            {
+              "id": "eu_blank_freezing",
+              "prompt": "When water freezes spontaneously below 0 C, the system's entropy decreases, so the entropy of the ____ must increase by more.",
+              "expected_answers": [
+                "surroundings",
+                "environment",
+                "the surroundings"
+              ],
+              "misconception_id": "surroundings_ignored",
+              "hint": "Where did the released heat go?"
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "eu_cp_1",
+              "prompt": "Water freezing at -10 C is spontaneous, yet ice is more ordered than liquid water. Explain why this does not violate the second law.",
+              "bloom_level": "analyse",
+              "rubric": [
+                "Identifies that the system's entropy does decrease",
+                "Identifies heat released to the surroundings",
+                "States that the surroundings' entropy increase exceeds the system's decrease",
+                "Concludes the total entropy change is positive"
+              ],
+              "targets_misconception": "system_entropy_must_increase"
+            },
+            {
+              "id": "eu_cp_2",
+              "prompt": "A classmate judges spontaneity by computing delta-S for the system only. Describe a case where this gives them the wrong answer, and say what they left out.",
+              "bloom_level": "analyse",
+              "rubric": [
+                "Gives a case with negative delta-S_system that is nonetheless spontaneous",
+                "Names the missing term as the surroundings' entropy change",
+                "States the correct criterion in terms of total entropy"
+              ],
+              "targets_misconception": "surroundings_ignored"
+            }
+          ]
         },
         {
           "id": "second_law_and_entropy",
           "name": "Second law and entropy",
-          "bloom_level": "understand"
+          "bloom_level": "understand",
+          "content_reviewed": false,
+          "key_terms": [
+            "second law",
+            "entropy",
+            "spontaneous",
+            "isolated system",
+            "local decrease",
+            "heat flow"
+          ],
+          "misconceptions": [
+            {
+              "id": "entropy_equals_disorder",
+              "statement": "Holds entropy and visual disorder to be the same thing, so a tidy room or a crystal is read as low entropy on sight",
+              "probe": "A tidy drawer and a messy one at the same temperature — can you actually rank their entropies by looking?",
+              "learner_facing": "'Disorder' is an analogy; entropy is a defined quantity"
+            },
+            {
+              "id": "local_decrease_forbidden",
+              "statement": "Reads the second law as forbidding any entropy decrease anywhere, so refrigerators and living things look like violations",
+              "probe": "Your fridge lowers the entropy of the food inside it. Which system does the second law actually constrain?",
+              "learner_facing": "Local decreases are fine; the total is what cannot decrease"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "sl_blank_isolated",
+              "prompt": "The second law says entropy cannot decrease in a(n) ____ system.",
+              "expected_answers": [
+                "isolated",
+                "closed and isolated",
+                "isolated system"
+              ],
+              "misconception_id": "local_decrease_forbidden",
+              "hint": "The constraint is on a system exchanging nothing with anything."
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "sl_cp_1",
+              "prompt": "A refrigerator makes the air inside it colder and more ordered. Explain, in your own words, why this is not a violation of the second law.",
+              "bloom_level": "understand",
+              "rubric": [
+                "Accepts that entropy inside the fridge decreases",
+                "Identifies that the fridge exhausts heat to the room",
+                "States that the total entropy of fridge plus room increases",
+                "Distinguishes a local decrease from a total decrease"
+              ],
+              "targets_misconception": "local_decrease_forbidden"
+            }
+          ]
         }
       ]
     },
@@ -39,27 +417,435 @@
         {
           "id": "conditional_probability",
           "name": "Conditional probability",
-          "bloom_level": "understand"
+          "bloom_level": "understand",
+          "content_reviewed": false,
+          "key_terms": [
+            "conditional probability",
+            "given",
+            "joint probability",
+            "marginal",
+            "reduced sample space"
+          ],
+          "misconceptions": [
+            {
+              "id": "conditional_direction_flipped",
+              "statement": "Reads P(A given B) as though it meant P(B given A), treating the two as interchangeable",
+              "probe": "P(cough given flu) is high — does that make P(flu given cough) high too, and why?",
+              "learner_facing": "P(A given B) and P(B given A) are different questions"
+            },
+            {
+              "id": "conditional_confused_with_joint",
+              "statement": "Uses P(A and B) where P(A given B) is asked, skipping the division by P(B)",
+              "probe": "You want the probability among the B cases only. What do you have to divide by to restrict attention to those?",
+              "learner_facing": "Conditioning shrinks the sample space — that is the division step"
+            },
+            {
+              "id": "conditioning_ignores_sample_space",
+              "statement": "Keeps computing over the full sample space after conditioning, rather than over the subset where the condition holds",
+              "probe": "Once you are told B happened, which outcomes are still in play?",
+              "learner_facing": "After 'given B', only the B outcomes count"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "cp_blank_divide",
+              "prompt": "By definition, P(A given B) equals P(A and B) divided by ____.",
+              "expected_answers": [
+                "P(B)",
+                "PB",
+                "the probability of B",
+                "P of B",
+                "probability of B"
+              ],
+              "misconception_id": "conditional_confused_with_joint",
+              "hint": "You are restricting attention to the cases where the condition holds."
+            },
+            {
+              "id": "cp_blank_space",
+              "prompt": "Conditioning on B means the sample space is reduced to only the outcomes in which B ____.",
+              "expected_answers": [
+                "happens",
+                "occurs",
+                "is true",
+                "occurred",
+                "happened",
+                "holds"
+              ],
+              "misconception_id": "conditioning_ignores_sample_space",
+              "hint": "Everything outside B is off the table now."
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "cp_cp_1",
+              "prompt": "Nearly everyone with flu has a cough, so P(cough given flu) is about 0.9. Does it follow that P(flu given cough) is about 0.9? Explain.",
+              "bloom_level": "understand",
+              "rubric": [
+                "Says no",
+                "Explains that the two conditionals have different conditioning events",
+                "Refers to how common coughs are overall (or how common flu is) as the reason they differ",
+                "Does not simply assert the numbers are equal"
+              ],
+              "targets_misconception": "conditional_direction_flipped"
+            },
+            {
+              "id": "cp_cp_2",
+              "prompt": "In your own words, say what changes about the sample space when you are told that B has happened, and why that introduces a division.",
+              "bloom_level": "understand",
+              "rubric": [
+                "States that the sample space is restricted to outcomes where B holds",
+                "Identifies P(B) as the size of that restricted space",
+                "Connects the division to renormalising within the restricted space"
+              ],
+              "targets_misconception": "conditioning_ignores_sample_space"
+            }
+          ]
         },
         {
           "id": "independence_vs_mutual_exclusivity",
           "name": "Independence vs. mutual exclusivity",
-          "bloom_level": "understand"
+          "bloom_level": "understand",
+          "content_reviewed": false,
+          "key_terms": [
+            "independent",
+            "mutually exclusive",
+            "disjoint",
+            "joint probability",
+            "P(A and B)"
+          ],
+          "misconceptions": [
+            {
+              "id": "independent_means_exclusive",
+              "statement": "Uses independent and mutually exclusive as synonyms, so 'cannot happen together' and 'do not affect each other' get the same test",
+              "probe": "Two events cannot both happen. Does knowing A happened tell you anything about B?",
+              "learner_facing": "Independent and mutually exclusive are different, almost opposite, ideas"
+            },
+            {
+              "id": "exclusive_implies_independent",
+              "statement": "Infers independence from disjointness, missing that two mutually exclusive events with nonzero probability are necessarily dependent",
+              "probe": "If A and B are disjoint and A happened, what is P(B) now? Is that the same as P(B) before?",
+              "learner_facing": "Disjoint events are dependent: one happening rules the other out"
+            },
+            {
+              "id": "wrong_addition_multiplication_rule",
+              "statement": "Adds probabilities to get P(A and B) or multiplies to get P(A or B), picking the rule by habit rather than by which property holds",
+              "probe": "Which property did you check before choosing to multiply — independence, or disjointness?",
+              "learner_facing": "Multiply for 'and' under independence; add for 'or' under disjointness"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "im_blank_joint",
+              "prompt": "If A and B are mutually exclusive, then P(A and B) = ____.",
+              "expected_answers": [
+                "0",
+                "zero",
+                "0.0"
+              ],
+              "misconception_id": "independent_means_exclusive",
+              "hint": "They cannot both happen."
+            },
+            {
+              "id": "im_blank_product",
+              "prompt": "A and B are independent exactly when P(A and B) equals P(A) times ____.",
+              "expected_answers": [
+                "P(B)",
+                "PB",
+                "the probability of B",
+                "P of B",
+                "probability of B"
+              ],
+              "misconception_id": "wrong_addition_multiplication_rule",
+              "hint": "This is the definition, not a consequence."
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "im_cp_1",
+              "prompt": "A single die roll gives a 2, or gives a 5 — call these A and B. Are A and B mutually exclusive? Are they independent? Justify each answer separately.",
+              "bloom_level": "understand",
+              "rubric": [
+                "Says A and B are mutually exclusive",
+                "Says A and B are NOT independent",
+                "Justifies dependence via P(A and B) = 0 not equalling P(A)P(B)",
+                "Treats the two properties as separate tests rather than one"
+              ],
+              "targets_misconception": "exclusive_implies_independent"
+            },
+            {
+              "id": "im_cp_2",
+              "prompt": "Give one pair of events that is independent but not mutually exclusive, and say which test you applied.",
+              "bloom_level": "understand",
+              "rubric": [
+                "Gives a valid example (e.g. two separate coin flips, or rain today and a coin flip)",
+                "Shows P(A and B) = P(A)P(B) or argues one does not inform the other",
+                "Notes the events can occur together, so they are not disjoint"
+              ],
+              "targets_misconception": "independent_means_exclusive"
+            }
+          ]
         },
         {
           "id": "base_rates_and_bayes",
           "name": "Base rates and Bayes",
-          "bloom_level": "apply"
+          "bloom_level": "apply",
+          "content_reviewed": false,
+          "key_terms": [
+            "base rate",
+            "prior",
+            "posterior",
+            "sensitivity",
+            "false positive rate",
+            "Bayes theorem",
+            "prevalence"
+          ],
+          "misconceptions": [
+            {
+              "id": "base_rate_neglect",
+              "statement": "Reasons from the test's accuracy alone, leaving the prevalence of the condition out of the calculation entirely",
+              "probe": "The test is 99% accurate. Before we go further — out of 10,000 people, how many actually have the condition?",
+              "learner_facing": "How rare the condition is changes the answer as much as the test quality"
+            },
+            {
+              "id": "sensitivity_read_as_posterior",
+              "statement": "Reports P(positive given disease) as the answer when P(disease given positive) was asked",
+              "probe": "Which of those two probabilities does the patient in front of you actually want to know?",
+              "learner_facing": "Test accuracy and 'do I have it' are different conditionals"
+            },
+            {
+              "id": "false_positives_undercounted",
+              "statement": "Compares true positives against the whole population rather than against all positives, so the false positives from a large healthy group are omitted from the denominator",
+              "probe": "Your denominator should be everyone who tested positive. Did you include the healthy people who tested positive too?",
+              "learner_facing": "A rare condition means most positives come from the healthy majority"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "br_blank_denominator",
+              "prompt": "To get P(disease given positive), the denominator must be the total number of ____ results.",
+              "expected_answers": [
+                "positive",
+                "positive test",
+                "all positive",
+                "positives",
+                "positive tests"
+              ],
+              "misconception_id": "false_positives_undercounted",
+              "hint": "Both the sick and the healthy contribute to it."
+            },
+            {
+              "id": "br_blank_prior",
+              "prompt": "In Bayes' theorem, the probability of the condition before any test result is called the ____.",
+              "expected_answers": [
+                "prior",
+                "base rate",
+                "prevalence",
+                "the prior",
+                "prior probability"
+              ],
+              "misconception_id": "base_rate_neglect",
+              "hint": "It is the piece people leave out."
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "br_cp_1",
+              "prompt": "A disease affects 1 in 1000 people. A test catches 99% of real cases and has a 5% false positive rate. Someone tests positive. Work out roughly how likely it is that they have the disease, showing your reasoning.",
+              "bloom_level": "apply",
+              "rubric": [
+                "Uses the 1 in 1000 base rate in the calculation",
+                "Counts true positives from the diseased group",
+                "Counts false positives from the healthy group",
+                "Divides true positives by ALL positives",
+                "Arrives at a low posterior (roughly 2%) and is not surprised into discarding it"
+              ],
+              "targets_misconception": "base_rate_neglect"
+            },
+            {
+              "id": "br_cp_2",
+              "prompt": "A classmate answers '99%' to the question above because the test is 99% accurate. Name the error they made and which quantity they actually computed.",
+              "bloom_level": "analyse",
+              "rubric": [
+                "Identifies the error as base rate neglect or as flipping the conditional",
+                "States that 99% is P(positive given disease), i.e. sensitivity",
+                "States that the question asked for P(disease given positive)"
+              ],
+              "targets_misconception": "sensitivity_read_as_posterior"
+            }
+          ]
         },
         {
           "id": "sampling_distributions_standard_error",
           "name": "Sampling distributions and standard error",
-          "bloom_level": "apply"
+          "bloom_level": "apply",
+          "content_reviewed": false,
+          "key_terms": [
+            "sampling distribution",
+            "standard error",
+            "standard deviation",
+            "sample mean",
+            "sample size",
+            "root n"
+          ],
+          "misconceptions": [
+            {
+              "id": "se_confused_with_sd",
+              "statement": "Uses the standard error and the population standard deviation interchangeably, so sample size never enters the answer",
+              "probe": "You quadrupled the sample size. Which of the two numbers changed, and by how much?",
+              "learner_facing": "SD describes individuals; SE describes the sample mean"
+            },
+            {
+              "id": "se_describes_individuals",
+              "statement": "Interprets the standard error as the spread of individual observations rather than the spread of the sample mean across repeated samples",
+              "probe": "SE = 2. Is that telling you how much one person varies, or how much the average of your sample would jump if you drew it again?",
+              "learner_facing": "SE is about how much your average would move, not how people differ"
+            },
+            {
+              "id": "sample_size_scaling_linear",
+              "statement": "Expects the standard error to halve when the sample size doubles, applying linear rather than root-n scaling",
+              "probe": "To halve the standard error, by what factor do you have to multiply n?",
+              "learner_facing": "SE shrinks with the square root of n, not with n"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "se_blank_formula",
+              "prompt": "The standard error of the mean equals the standard deviation divided by the square root of ____.",
+              "expected_answers": [
+                "n",
+                "the sample size",
+                "sample size",
+                "N"
+              ],
+              "misconception_id": "se_confused_with_sd",
+              "hint": "The only quantity here that you control."
+            },
+            {
+              "id": "se_blank_fourfold",
+              "prompt": "To halve the standard error, you must multiply the sample size by ____.",
+              "expected_answers": [
+                "4",
+                "four",
+                "a factor of 4",
+                "4x"
+              ],
+              "misconception_id": "sample_size_scaling_linear",
+              "hint": "The square root is doing the work."
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "se_cp_1",
+              "prompt": "A population has SD = 10. You take samples of size 25. Find the standard error, then say what would happen to it if you took samples of size 100 instead, and why.",
+              "bloom_level": "apply",
+              "rubric": [
+                "Computes SE = 2 for n = 25",
+                "Computes SE = 1 for n = 100",
+                "Attributes the change to division by the square root of n",
+                "Notes the population SD itself is unchanged by sampling more"
+              ],
+              "targets_misconception": "se_confused_with_sd"
+            },
+            {
+              "id": "se_cp_2",
+              "prompt": "Your sample of 40 students has a mean study time of 12 hours with SE = 0.5. A classmate concludes that most students study between 11.5 and 12.5 hours. What have they misread?",
+              "bloom_level": "analyse",
+              "rubric": [
+                "Identifies that SE describes the sampling distribution of the mean",
+                "States that individual spread is given by the SD, not the SE",
+                "Notes the interval describes uncertainty in the mean, not the range of students"
+              ],
+              "targets_misconception": "se_describes_individuals"
+            }
+          ]
         },
         {
           "id": "correlation_and_causation_fitted_model",
           "name": "Correlation and causation in a fitted model",
-          "bloom_level": "analyse"
+          "bloom_level": "analyse",
+          "content_reviewed": false,
+          "key_terms": [
+            "correlation",
+            "causation",
+            "regression coefficient",
+            "confounder",
+            "R-squared",
+            "observational data",
+            "association"
+          ],
+          "misconceptions": [
+            {
+              "id": "coefficient_read_as_causal",
+              "statement": "Reads a fitted regression coefficient from observational data as the causal effect of intervening on that predictor",
+              "probe": "Your model says 2.3 per unit. If we went out and raised that predictor by one unit ourselves, would we get 2.3?",
+              "learner_facing": "A fitted slope is an association until the design earns a causal reading"
+            },
+            {
+              "id": "r_squared_implies_causation",
+              "statement": "Treats a high R-squared as evidence that the predictors cause the outcome, conflating fit quality with causal validity",
+              "probe": "A model with R-squared of 0.95 predicts ice cream sales from drowning rates. Is the causal story settled?",
+              "learner_facing": "Good fit and correct causal story are separate claims"
+            },
+            {
+              "id": "confounder_unconsidered",
+              "statement": "Concludes causation from an association without proposing any third variable that could produce it",
+              "probe": "Name one variable that could drive both of these at once. What happens to your claim if it exists?",
+              "learner_facing": "Always name a candidate confounder before claiming cause"
+            }
+          ],
+          "blanks": [
+            {
+              "id": "cc_blank_confounder",
+              "prompt": "A third variable that influences both the predictor and the outcome, creating an association with no direct causal link, is called a ____.",
+              "expected_answers": [
+                "confounder",
+                "confounding variable",
+                "a confounder",
+                "confound",
+                "lurking variable"
+              ],
+              "misconception_id": "confounder_unconsidered",
+              "hint": "It is the variable you did not put in the model."
+            },
+            {
+              "id": "cc_blank_design",
+              "prompt": "The design that most directly licenses a causal reading of a coefficient is a randomised ____.",
+              "expected_answers": [
+                "experiment",
+                "controlled trial",
+                "trial",
+                "randomised experiment",
+                "experiment or trial"
+              ],
+              "misconception_id": "coefficient_read_as_causal",
+              "hint": "Randomisation is what breaks the link to confounders."
+            }
+          ],
+          "checkpoint_items": [
+            {
+              "id": "cc_cp_1",
+              "prompt": "A model fitted to observational data finds that students who attend more tutorials score 8 marks higher, with R-squared of 0.6. A classmate concludes tutorials raise marks by 8. Analyse this claim.",
+              "bloom_level": "analyse",
+              "rubric": [
+                "Identifies the coefficient as an association, not an intervention effect",
+                "Proposes at least one concrete confounder (e.g. prior motivation or ability)",
+                "States that R-squared speaks to fit, not to causal validity",
+                "Names what design or adjustment would be needed to support the causal claim"
+              ],
+              "targets_misconception": "coefficient_read_as_causal"
+            },
+            {
+              "id": "cc_cp_2",
+              "prompt": "Explain what would have to change about how the tutorial data was collected before the 8-mark figure could be read as a causal effect.",
+              "bloom_level": "analyse",
+              "rubric": [
+                "Proposes randomised assignment to tutorials, or a credible quasi-experimental design",
+                "Explains that randomisation breaks the association between the predictor and confounders",
+                "Acknowledges remaining limits (compliance, external validity) or the need to adjust for measured confounders"
+              ],
+              "targets_misconception": "confounder_unconsidered"
+            }
+          ]
         }
       ]
     }
@@ -115,5 +901,6 @@
       "role": "introduces a worked situation, then probes boundaries and edge cases",
       "bloom_target": "apply_analyse"
     }
-  }
+  },
+  "_content_notes": "Each concept carries the authored half of the structured record (PROJECT.md D5 / HLD T1.7): key_terms, misconceptions, blanks and checkpoint_items with rubrics. The compiled half (claims, worked_example, hint_ladder) is produced by services/verification_engine at build time and is NOT stored here. misconception ids are an enum: every misconception_id and targets_misconception value must name a misconception declared on the same concept, and DoubtLogEntry.misconception_id draws from this list -- that is what makes doubts countable rather than a pile of strings. content_reviewed is false until a TA/instructor has checked the misconceptions and rubrics for a concept; POST /topics/concepts/{concept_id}/mark-content-reviewed flips it, and /topics/content-review-status reports which are outstanding. blanks carry expected_answers, which are server-side only and are never sent to the browser."
 }

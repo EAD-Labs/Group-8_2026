@@ -42,6 +42,17 @@ class BloomLevel(str, enum.Enum):
     ANALYSE = "analyse"
 
 
+class DialogueMode(str, enum.Enum):
+    """
+    HLD T2.7. `REDUCED` suppresses the basic-student persona, leaving
+    teacher + advanced student, for learners who find the three-way dialogue
+    noisy. It is a filter over the fixed turn spec, not a different spec —
+    see services/dialogue_orchestrator.
+    """
+    FULL = "full"
+    REDUCED = "reduced"
+
+
 class ConditionType(str, enum.Enum):
     PLATFORM = "platform"   # simulated classroom
     PLAIN_CHAT = "plain_chat"  # baseline, for the comparative study (HLD 6.3)
@@ -91,7 +102,14 @@ class VerifiedKnowledgeRecord(Base):
     concept_id: Mapped[str] = mapped_column(String, index=True)  # references content/modules.json, or "freeform:<slug>"
     module_id: Mapped[str] = mapped_column(String, index=True)
     topic_name: Mapped[str | None] = mapped_column(String, nullable=True)  # set for freeform topics only; pilot concepts get their name from modules.json
+    # Prose rendering of `structured`, kept so the classroom board and older
+    # prompt paths keep working. Derived, not authoritative.
     verified_text: Mapped[str] = mapped_column(Text)
+    # The addressable record (HLD T1.7, PROJECT.md D5): claims, worked example,
+    # misconceptions, hint ladder, blanks, checkpoint items with rubrics.
+    # Serialised app.content.schema.StructuredConceptRecord. Everything
+    # downstream addresses fields of this instead of substring-searching prose.
+    structured: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     provenance: Mapped[dict] = mapped_column(JSON)          # which providers agreed/disagreed
     resolved_disagreements: Mapped[dict] = mapped_column(JSON)
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
@@ -107,11 +125,17 @@ class LearningSession(Base):
     module_id: Mapped[str] = mapped_column(String, index=True)
     verified_record_id: Mapped[str] = mapped_column(String, ForeignKey("verified_knowledge_records.id"))
     condition: Mapped[ConditionType] = mapped_column(SAEnum(ConditionType), default=ConditionType.PLATFORM)
+    dialogue_mode: Mapped[DialogueMode] = mapped_column(SAEnum(DialogueMode), default=DialogueMode.FULL)
+    # HLD 6.3 equal time budget. Both arms of the comparative study get the
+    # same number of seconds; enforcing it requires the baseline to live
+    # inside this app rather than sending learners to a third-party chat.
+    time_budget_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="sessions")
     turns: Mapped[list["DialogueTurn"]] = relationship(back_populates="session")
+    baseline_messages: Mapped[list["BaselineMessage"]] = relationship(back_populates="session")
     checkpoint_result: Mapped["CheckpointResult"] = relationship(back_populates="session", uselist=False)
     voice_signal_score: Mapped["VoiceSignalScore"] = relationship(back_populates="session", uselist=False)
 
@@ -127,6 +151,15 @@ class DialogueTurn(Base):
     turn_type: Mapped[str] = mapped_column(String)  # dialogue | hint | blank | learner_question
     content: Mapped[str] = mapped_column(Text)
     target_bloom_level: Mapped[BloomLevel | None] = mapped_column(SAEnum(BloomLevel), nullable=True)
+    # For turn_type == "blank": which BlankCandidate in the structured record
+    # this turn came from. The expected answers stay server-side, looked up
+    # through this id when a guess arrives — they are never streamed to the
+    # browser, or the gate would be decorative.
+    blank_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # The misconception this turn is aimed at, where one applies. Drawn from
+    # the concept's authored enum, so a wrong answer here names something
+    # countable (PROJECT.md D1).
+    misconception_id: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     session: Mapped["LearningSession"] = relationship(back_populates="turns")
@@ -161,13 +194,26 @@ class CheckpointResult(Base):
 
 
 class QuizResult(Base):
-    """Delayed retention quizzes + transfer problems (non-blocking, HLD 6.3)."""
+    """
+    Delayed retention quizzes, transfer problems, and linked questions
+    (non-blocking, HLD 6.3).
+
+    `quiz_type` is one of:
+      - retention — the same concept, after a delay. The only route to RETAINED.
+      - transfer  — the concept in an uncovered situation (HLD T3.5).
+      - linked    — a new question that ties this concept to another the
+                    learner has already passed (HLD T3.4). `linked_concept_id`
+                    records the other side of the link.
+    """
     __tablename__ = "quiz_results"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
     concept_id: Mapped[str] = mapped_column(String, index=True)
-    quiz_type: Mapped[str] = mapped_column(String)  # retention | transfer
+    quiz_type: Mapped[str] = mapped_column(String)  # retention | transfer | linked
+    # Set for quiz_type == "linked": the previously-passed concept this
+    # question connects to (HLD T3.4).
+    linked_concept_id: Mapped[str | None] = mapped_column(String, nullable=True)
     prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     scheduled_for: Mapped[datetime] = mapped_column(DateTime)
@@ -199,6 +245,12 @@ class DoubtLogEntry(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
     concept_id: Mapped[str] = mapped_column(String, index=True)
+    # The enum id from the concept's authored misconception list. This is the
+    # aggregatable field — "doubts closed per learner", and the per-
+    # misconception breakdown, both group on it (HLD 6.6).
+    misconception_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    # Human-readable label for the same thing, denormalised so the Progress
+    # screen and the report do not have to reload modules.json per row.
     misconception: Mapped[str] = mapped_column(String)   # e.g. "sign convention reversed"
     source: Mapped[str] = mapped_column(String)  # wrong_blank | revealed_hint | checkpoint_miss | teachback_omission | speech_hesitation
     closed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -206,6 +258,28 @@ class DoubtLogEntry(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="doubt_log_entries")
+
+
+class BaselineMessage(Base):
+    """
+    One turn of the plain-chat baseline arm (HLD 6.3 control condition).
+
+    The baseline lives inside this app rather than sending learners to a
+    third-party chat product: otherwise the equal time budget cannot be
+    enforced, nothing from the control condition is logged, and there is no
+    way to verify a learner completed it. Same login, same timer, same
+    checkpoint and quiz delivery — just a chat box instead of a classroom.
+    """
+    __tablename__ = "baseline_messages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(String, ForeignKey("learning_sessions.id"), index=True)
+    message_index: Mapped[int] = mapped_column(Integer)
+    role: Mapped[str] = mapped_column(String)  # learner | assistant
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    session: Mapped["LearningSession"] = relationship(back_populates="baseline_messages")
 
 
 class VoiceSignalScore(Base):

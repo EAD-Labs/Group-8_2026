@@ -4,10 +4,35 @@ import { Sparkles, HelpCircle, Clock, ArrowRight } from 'lucide-react'
 import NavShell from '../components/NavShell'
 import { api } from '../api/client'
 
-type MasteryItem = { concept_id: string; module_id: string; state: string; bloom_level_reached: string | null }
-type Doubt = { id: string; concept_id: string; misconception: string }
+type MasteryItem = {
+  concept_id: string
+  concept_name: string
+  module_id: string
+  state: string
+  bloom_level_reached: string | null
+}
+// `misconception` is the learner-facing wording; `misconception_id` is the enum
+// value the doubt log and the comparative report aggregate on.
+type Doubt = {
+  id: string
+  concept_id: string
+  concept_name: string
+  misconception_id: string | null
+  misconception: string
+  source: string
+}
 type PendingCheck = { concept_id: string; scheduled_for: string }
 type BadgeItem = { code: string; label: string; emoji: string; description: string; awarded_at: string }
+
+// Where a doubt came from, in language that means something to a learner rather
+// than the internal source enum.
+const SOURCE_LABEL: Record<string, string> = {
+  wrong_blank: 'from a fill-in-the-blank',
+  revealed_hint: 'you asked for the hint',
+  checkpoint_miss: 'from your checkpoint',
+  teachback_omission: 'missing from your teach-back',
+  speech_hesitation: 'you hesitated here',
+}
 
 const STATE_ORDER = ['not_started', 'introduced', 'checkpoint_passed', 'retained']
 const STATE_LABEL: Record<string, string> = {
@@ -41,6 +66,8 @@ export default function Progress() {
   const [pending, setPending] = useState<PendingCheck[]>([])
   const [badges, setBadges] = useState<BadgeItem[]>([])
   const [points, setPoints] = useState(0)
+  const [doubtsClosed, setDoubtsClosed] = useState(0)
+  const [closing, setClosing] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
@@ -53,13 +80,21 @@ export default function Progress() {
         setPending(data.pending_retention_checks)
         setBadges(data.badges)
         setPoints(data.points ?? 0)
+        setDoubtsClosed(data.doubts_closed ?? 0)
       })
       .finally(() => setLoading(false))
   }, [])
 
   async function handleCloseDoubt(id: string) {
-    await api.closeDoubt(id)
-    setDoubts((prev) => prev.filter((d) => d.id !== id))
+    setClosing(id)
+    try {
+      await api.closeDoubt(id)
+      setDoubts((prev) => prev.filter((d) => d.id !== id))
+      setDoubtsClosed((n) => n + 1)
+      setPoints((p) => p + 5)
+    } finally {
+      setClosing(null)
+    }
   }
 
   if (loading) return <NavShell title="Progress"><p className="text-sm text-slate-500">Loading…</p></NavShell>
@@ -84,7 +119,7 @@ export default function Progress() {
           <ul className="space-y-3">
             {mastery.map((m) => (
               <li key={m.concept_id} className="flex items-center justify-between gap-4">
-                <span className="text-sm text-ink truncate">{m.concept_id.replace('freeform:', '').replaceAll(/[-_]/g, ' ')}</span>
+                <span className="text-sm text-ink truncate">{m.concept_name}</span>
                 <div className="flex items-center gap-3 shrink-0">
                   <MasteryBar state={m.state} />
                   <span className="text-xs text-slate-500 w-28 text-right">{STATE_LABEL[m.state]}</span>
@@ -112,21 +147,36 @@ export default function Progress() {
         )}
 
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="font-display font-semibold text-ink mb-3 flex items-center gap-2">
-            <HelpCircle size={16} className="text-learner" /> Open doubts
-          </h2>
-          {doubts.length === 0 && <p className="text-sm text-slate-400">No open doubts right now.</p>}
-          <ul className="space-y-2">
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="font-display font-semibold text-ink flex items-center gap-2">
+              <HelpCircle size={16} className="text-learner" /> Open doubts
+            </h2>
+            {doubtsClosed > 0 && (
+              <span className="text-xs text-slate-400">{doubtsClosed} closed so far</span>
+            )}
+          </div>
+          {doubts.length === 0 && (
+            <p className="text-sm text-slate-400">
+              {doubtsClosed > 0
+                ? "Nothing open — you've closed everything that came up."
+                : 'No open doubts right now. They appear when a blank or a checkpoint question catches something.'}
+            </p>
+          )}
+          <ul className="space-y-2.5">
             {doubts.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-slate-700">
-                  <span className="text-slate-400">{d.concept_id.replaceAll('_', ' ')}:</span> {d.misconception}
-                </span>
+              <li key={d.id} className="flex items-start justify-between gap-3 text-sm">
+                <div className="flex-1">
+                  <p className="text-slate-700">{d.misconception}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {d.concept_name} · {SOURCE_LABEL[d.source] ?? d.source.replaceAll('_', ' ')}
+                  </p>
+                </div>
                 <button
-                  className="text-xs text-cobalt hover:underline shrink-0"
+                  className="text-xs text-cobalt hover:underline shrink-0 disabled:opacity-50"
+                  disabled={closing === d.id}
                   onClick={() => handleCloseDoubt(d.id)}
                 >
-                  Mark resolved
+                  {closing === d.id ? 'Closing…' : 'This makes sense now'}
                 </button>
               </li>
             ))}

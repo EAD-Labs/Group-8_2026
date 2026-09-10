@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Beaker, Sigma } from 'lucide-react'
+import { ArrowRight, Beaker, Sigma, Users, UserMinus } from 'lucide-react'
 import NavShell from '../components/NavShell'
-import { api } from '../api/client'
+import { api, type DialogueMode } from '../api/client'
 
 type Concept = { id: string; name: string; bloom_level: string }
 type Module = { id: string; name: string; concepts: Concept[] }
@@ -25,6 +25,9 @@ export default function TopicSetup() {
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState<string | null>(null)
   const [freeTopic, setFreeTopic] = useState('')
+  // HLD T2.7. Reduced mode drops the basic-student persona for learners who find
+  // the three-way dialogue noisy; the gated hint and blocking blank stay.
+  const [dialogueMode, setDialogueMode] = useState<DialogueMode>('full')
   const [startingFreeform, setStartingFreeform] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
@@ -40,12 +43,25 @@ export default function TopicSetup() {
       .finally(() => setLoading(false))
   }, [])
 
-  async function handleStart(conceptId: string) {
+  /**
+   * Each concept goes to the surface its condition assigns.
+   *
+   * The assignment is fixed per learner at signup (HLD 6.3 / D-03), and the
+   * backend refuses a mismatch with a 409 — sending a plain-chat concept into the
+   * classroom would compare the platform against itself. Routing here keeps that
+   * from ever being a learner-visible error.
+   */
+  async function handleStart(conceptId: string, condition: string | undefined) {
     setStarting(conceptId)
     setError(null)
     try {
-      const res = await api.startSession(conceptId)
-      navigate(`/classroom/${res.session_id}`)
+      if (condition === 'plain_chat') {
+        const res = await api.startBaseline(conceptId)
+        navigate(`/plain-chat/${res.session_id}`)
+      } else {
+        const res = await api.startSession(conceptId, dialogueMode)
+        navigate(`/classroom/${res.session_id}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start this session.')
     } finally {
@@ -58,7 +74,7 @@ export default function TopicSetup() {
     setStartingFreeform(true)
     setError(null)
     try {
-      const res = await api.startFreeformSession(freeTopic.trim())
+      const res = await api.startFreeformSession(freeTopic.trim(), dialogueMode)
       navigate(`/classroom/${res.session_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start this session.')
@@ -101,6 +117,39 @@ export default function TopicSetup() {
           </div>
         </div>
 
+        {/* HLD T2.7 — a filter on the turn spec, chosen before entering */}
+        <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4">
+          <p className="text-sm font-medium text-ink mb-1">Classroom style</p>
+          <p className="text-xs text-slate-400 mb-3">
+            Applies to the simulated classroom. You'll still get the hints and the fill-in-the-blanks
+            either way.
+          </p>
+          <div className="flex gap-2">
+            {(
+              [
+                { mode: 'full' as DialogueMode, icon: Users, label: 'Full class', hint: 'Teacher, a student who asks basics, and one who pushes further' },
+                { mode: 'reduced' as DialogueMode, icon: UserMinus, label: 'Fewer voices', hint: 'Teacher and the advanced student only' },
+              ]
+            ).map(({ mode, icon: Icon, label, hint }) => (
+              <button
+                key={mode}
+                onClick={() => setDialogueMode(mode)}
+                aria-pressed={dialogueMode === mode}
+                className={`flex-1 text-left rounded-xl border px-3.5 py-2.5 transition-colors ${
+                  dialogueMode === mode
+                    ? 'border-cobalt bg-cobalt-light'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <span className={`flex items-center gap-1.5 text-xs font-semibold ${dialogueMode === mode ? 'text-cobalt' : 'text-slate-500'}`}>
+                  <Icon size={13} /> {label}
+                </span>
+                <span className="block text-[11px] text-slate-400 mt-0.5">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {modules.map((mod) => {
           const Icon = MODULE_ICON[mod.id] || Beaker
           return (
@@ -134,9 +183,13 @@ export default function TopicSetup() {
                       <button
                         className="text-xs font-medium text-white bg-ink rounded-lg px-3.5 py-1.5 disabled:opacity-50 hover:bg-cobalt-dark transition-colors shrink-0"
                         disabled={starting === c.id}
-                        onClick={() => handleStart(c.id)}
+                        onClick={() => handleStart(c.id, condition)}
                       >
-                        {starting === c.id ? 'Starting…' : 'Enter classroom'}
+                        {starting === c.id
+                          ? 'Starting…'
+                          : condition === 'plain_chat'
+                            ? 'Open chat'
+                            : 'Enter classroom'}
                       </button>
                     </li>
                   )

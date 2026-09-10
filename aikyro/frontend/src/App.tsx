@@ -3,6 +3,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import TopicSetup from './pages/TopicSetup'
 import Classroom from './pages/Classroom'
+import PlainChat from './pages/PlainChat'
 import Checkpoint from './pages/Checkpoint'
 import Progress from './pages/Progress'
 import Quizzes from './pages/Quizzes'
@@ -43,6 +44,15 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Classroom />
+            </ProtectedRoute>
+          }
+        />
+        {/* the plain-chat baseline arm (HLD 6.3 control condition) */}
+        <Route
+          path="/plain-chat/:sessionId"
+          element={
+            <ProtectedRoute>
+              <PlainChat />
             </ProtectedRoute>
           }
         />
