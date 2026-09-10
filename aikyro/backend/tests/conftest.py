@@ -20,6 +20,28 @@ from sqlalchemy.orm import sessionmaker
 
 
 @pytest.fixture(autouse=True)
+def _force_mock_mode():
+    """
+    Pin the suite to mock mode regardless of backend/.env.
+
+    Settings read .env, so a developer with LLM_MODE=live set for real use would
+    otherwise have the whole suite make live API calls: slow, costly, dependent
+    on someone's rate limit, and non-deterministic — a rate-limited key silently
+    changes which code path a test exercises. The acceptance criteria are
+    specified to hold with zero keys, so mock is also the honest thing to assert
+    against.
+    """
+    from app.config import settings
+
+    original = (settings.llm_mode, settings.llm_providers, settings.speech_provider)
+    settings.llm_mode = "mock"
+    settings.llm_providers = ["anthropic", "openai"]
+    settings.speech_provider = "mock"
+    yield
+    settings.llm_mode, settings.llm_providers, settings.speech_provider = original
+
+
+@pytest.fixture(autouse=True)
 def _protect_content_file():
     """
     `mark_pair_reviewed` and `mark_content_reviewed` write back to

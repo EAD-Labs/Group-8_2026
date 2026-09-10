@@ -36,10 +36,33 @@ dialogue can be fixed by hand, and "resume after a dropped connection" reduces
 to "resume from a turn index" (HLD T2.10). Do not replace it with live
 generation.
 """
+import logging
+
 from app.config import settings
 from app.content.schema import StructuredConceptRecord
 from app.models import DialogueMode
 from app.services.llm_providers import generate, preferred_available_provider
+
+logger = logging.getLogger(__name__)
+
+# Appended to every live prompt in this module.
+#
+# Two failure modes seen in real output that the per-turn prompts do not
+# prevent on their own: models reach for LaTeX ("$P(A \cap B)$") on
+# mathematical topics, which renders as literal dollar signs and backslashes in
+# a classroom with no math typesetter; and they prefix their own speaker label
+# ("Teacher: ...") when the UI already shows whose turn it is.
+_HOUSE_STYLE = (
+    "\n\nStyle rules, which override anything above:\n"
+    "- Plain text only. No LaTeX, no $...$, no backslash commands, no markdown "
+    "formatting. Write mathematics in words and plain symbols the way a person "
+    "says it aloud: 'P(A and B)', 'delta-U', 'the square root of n'.\n"
+    "- Do not prefix your line with your own name or role. Speak directly.\n"
+    "- Do not use stage directions or narration about yourself.\n"
+    "- If a fill-in-the-blank question appears in the transcript above, do NOT "
+    "state its answer. The learner has to fill it in themselves; a character "
+    "who answers it out loud has taken the question away from them."
+)
 
 # Turn indices are not stable identities; turn *roles* are. Each spec below
 # names the role it plays so reduced mode can filter by role rather than by
@@ -236,24 +259,61 @@ async def build_dialogue(
     for spec in specs:
         if spec["live_prompt"] is None:
             # blank turns are authored verbatim — see the spec comment
-            content = spec["mock_content"]
+            content, generated = spec["mock_content"], False
         else:
             try:
-                content = (await generate(provider, spec["live_prompt"](transcript),
-                                          concept_name=rec.concept_name)).strip()
+                # Run tier, not build. PROJECT.md §6 files dialogue scripting
+                # under build-time, on the assumption it happens once per
+                # concept — but only the *verified record* is cached, and
+                # build_dialogue runs afresh for every session. Six calls per
+                # session is the volume driver in this app, so it belongs on the
+                # cheap model.
+                content = (await generate(provider, spec["live_prompt"](transcript) + _HOUSE_STYLE,
+                                          concept_name=rec.concept_name, tier="run")).strip()
+                content = _strip_speaker_prefix(content, spec["speaker"])
+                generated = bool(content)
                 if not content:
                     content = spec["mock_content"]
-            except Exception:
-                # one turn failing to generate shouldn't take down the whole
-                # lesson — drop back to the template for just this turn
-                content = spec["mock_content"]
-        turns.append(_finalize(spec, content))
+            except Exception as exc:
+                # One turn failing shouldn't take down the whole lesson — drop
+                # back to the template for just this turn. But say so: a
+                # rate-limited key can silently template half a dialogue, and a
+                # lesson that looks live while being mostly canned is the one
+                # outcome an operator most needs to know about.
+                logger.warning(
+                    "dialogue turn '%s' for %r fell back to its template: %s",
+                    spec["role"], rec.concept_name, exc,
+                )
+                content, generated = spec["mock_content"], False
+        turns.append(_finalize(spec, content, generated=generated))
         transcript += f"{spec['speaker']}: {content}\n"
     return turns
 
 
-def _finalize(spec: dict, content: str) -> dict:
-    """Shape the caller persists as a DialogueTurn. Keys match the model's columns."""
+def _strip_speaker_prefix(content: str, speaker: str) -> str:
+    """
+    Remove a self-applied speaker label, belt-and-braces alongside the house
+    style rule. Models re-add these intermittently, and the UI already shows
+    whose turn it is, so a leading "Teacher:" reads as a stutter.
+    """
+    labels = (speaker.replace("_", " "), speaker, "teacher", "student")
+    stripped = content.lstrip()
+    for label in labels:
+        prefix = f"{label}:"
+        if stripped[: len(prefix)].lower() == prefix.lower():
+            return stripped[len(prefix):].lstrip()
+    return content
+
+
+def _finalize(spec: dict, content: str, *, generated: bool = False) -> dict:
+    """
+    Shape the caller persists as a DialogueTurn. Keys match the model's columns.
+
+    `generated` is deliberately not one of them: whether a given turn came from
+    a model or its template is operational detail, not learner state, and adding
+    a column for it would put a migration in the way of every future prompt
+    tweak. It is logged instead — see build_dialogue.
+    """
     return {
         "speaker": spec["speaker"],
         "turn_type": spec["turn_type"],
@@ -313,7 +373,9 @@ async def insert_learner_question(
                 + "\n\n2-3 sentences, no preamble."
             )
             try:
-                content = (await generate(provider, prompt, concept_name=rec.concept_name)).strip()
+                content = (await generate(provider, prompt + _HOUSE_STYLE,
+                                          concept_name=rec.concept_name)).strip()
+                content = _strip_speaker_prefix(content, "teacher")
                 if content:
                     return {
                         "speaker": "teacher",
@@ -323,8 +385,8 @@ async def insert_learner_question(
                         "blank_id": None,
                         "misconception_id": None,
                     }
-            except Exception:
-                pass  # fall through to the templated answer below
+            except Exception as exc:
+                logger.warning("learner-question answer fell back to template: %s", exc)
 
     return {
         "speaker": "teacher",

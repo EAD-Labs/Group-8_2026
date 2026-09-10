@@ -37,18 +37,43 @@ class Settings(BaseSettings):
     # providers — nothing else in the codebase needs to change.
     llm_mode: Literal["mock", "live"] = "mock"
     llm_providers: list[str] = ["anthropic", "openai"]  # order = preference for judge/grading calls, HLD 10.4 wants >=2
+    # Set LLM_PROVIDERS in .env to match the keys you actually have — listing a
+    # provider with no key costs a failed request per call before the
+    # per-provider fallback catches it.
 
     # API keys — leave unset to keep a provider mocked even in "live" mode
     # (each provider fails gracefully and independently, HLD 10.4). Put
     # these in backend/.env, never commit real keys.
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
+    gemini_api_key: str | None = None
 
     # Model names are deliberately settings, not hardcoded — provider
     # lineups change faster than this codebase should need to.
     anthropic_model: str = "claude-sonnet-5"
     openai_model: str = "gpt-4o-mini"
+    # A floating alias, deliberately: Google retires dated Gemini ids, and a
+    # pinned one starts 404ing without warning (gemini-2.0-flash already does).
+    gemini_model: str = "gemini-flash-latest"
+
+    # The cheap model for the "run" tier — dialogue turns, learner answers,
+    # grading, the baseline arm. See the tiering note in services/llm_providers.
+    # Leave a *_model_fast unset to use that provider's one model for both tiers.
+    # On a free-tier Gemini key this is load-bearing rather than an
+    # optimisation: the daily request quota is per model, so the tiers draw on
+    # separate buckets and exhausting one does not take out the other.
+    anthropic_model_fast: str | None = None
+    openai_model_fast: str | None = None
+    gemini_model_fast: str | None = "gemini-3.1-flash-lite"
     llm_request_timeout_seconds: float = 30.0
+
+    # Retry policy for transient provider failures (429 rate limits, 5xx).
+    # Rate-limited keys return these intermittently, and one learner session
+    # makes many calls, so without retries live mode silently degrades to
+    # templates while still reporting itself as live.
+    llm_max_retries: int = 4
+    llm_retry_base_delay_seconds: float = 1.0
+    llm_retry_max_delay_seconds: float = 20.0
 
     # --- voice / speech signal ---
     # HLD 6.3 / 10.6: speech is the one committed multimodal signal.

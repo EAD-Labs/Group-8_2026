@@ -61,7 +61,9 @@ from app.content.schema import (
     StructuredConceptRecord, WorkedExample,
 )
 from app.models import VerifiedKnowledgeRecord
-from app.services.llm_providers import generate, preferred_available_provider, extract_json_object
+from app.services.llm_providers import (
+    ProviderError, extract_json_object, generate, preferred_available_provider,
+)
 
 
 async def produce_verified_record(db: DBSession, concept_id: str) -> VerifiedKnowledgeRecord:
@@ -158,7 +160,8 @@ async def _run_pipeline(
             for provider in settings.llm_providers
         ]
     )
-    answers = {p: r for p, r in zip(settings.llm_providers, results) if r is not None}
+    answers = {p: r for p, (r, _) in zip(settings.llm_providers, results) if r is not None}
+    failures = {p: why for p, (r, why) in zip(settings.llm_providers, results) if r is None}
 
     compiled, disagreements, confidence = await _adjudicate(answers, base)
 
@@ -171,6 +174,8 @@ async def _run_pipeline(
         provenance={
             "providers_used": list(answers.keys()),
             "providers_attempted": list(settings.llm_providers),
+            # why each absent provider is absent — see _generate_with_fallback
+            "provider_failures": failures,
             "llm_mode": settings.llm_mode,
             "authored_fields_from_modules_json": not needs_authoring,
             "raw_answers": answers,
@@ -189,12 +194,24 @@ def _slugify(text: str) -> str:
     return slug[:80] or "topic"
 
 
-async def _generate_with_fallback(provider: str, prompt: str, concept_name: str) -> str | None:
+async def _generate_with_fallback(
+    provider: str, prompt: str, concept_name: str
+) -> tuple[str | None, str | None]:
+    """
+    Returns (answer, failure_reason) — exactly one is non-None.
+
+    The reason is kept rather than swallowed: a record showing
+    `providers_used: []` with no explanation is indistinguishable from one that
+    was never asked for, and an operator looking at a session that quietly
+    reverted to templates has nothing to go on. HLD 10.4 asks for the
+    degradation to be *recorded*, not merely survived.
+    """
     try:
-        return await generate(provider, prompt, concept_name=concept_name)
-    except Exception:
-        # HLD 10.4 fallback: remaining agents proceed, record marked lower confidence
-        return None
+        return await generate(provider, prompt, concept_name=concept_name, tier="build"), None
+    except ProviderError as exc:
+        return None, exc.reason
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"[:200]
 
 
 def _build_prompt(base: StructuredConceptRecord, *, needs_authoring: bool) -> str:
@@ -340,7 +357,7 @@ async def _adjudicate_live(
     )
 
     try:
-        raw = await generate(judge_provider, judge_prompt, concept_name=base.concept_name)
+        raw = await generate(judge_provider, judge_prompt, concept_name=base.concept_name, tier="build")
         payload = extract_json_object(raw)
         compiled = _merge(base, payload)
         disagreements = _normalise_disagreements(
