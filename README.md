@@ -7,6 +7,8 @@ skeleton with mocked AI calls so you can develop against it before the D1
 voice spike and real LLM keys are ready, and so it's easy to change as the
 HLD changes.
 
+Lovable model : https://classroom-journey.lovable.app
+
 ## What's actually implemented
 
 - **Auth** — signup/login (JWT). Signup assigns a counterbalanced topic pair
