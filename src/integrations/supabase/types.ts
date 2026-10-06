@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      evaluation_events: {
+        Row: {
+          id: string
+          user_id: string
+          session_id: string | null
+          module_slug: string
+          concept_slug: string
+          event_type: string
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          session_id?: string | null
+          module_slug: string
+          concept_slug: string
+          event_type: string
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          session_id?: string | null
+          module_slug?: string
+          concept_slug?: string
+          event_type?: string
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evaluation_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "learning_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       assessment_attempts: {
         Row: {
           assessment_type: string
