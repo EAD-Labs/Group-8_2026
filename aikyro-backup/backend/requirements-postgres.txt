@@ -1,0 +1,5 @@
+# Only needed once you switch app/config.py's database_url from sqlite to
+# postgres. Kept separate from requirements.txt because psycopg2-binary
+# needs a C compiler (or a prebuilt wheel) and isn't needed for local dev.
+-r requirements.txt
+psycopg2-binary==2.9.9

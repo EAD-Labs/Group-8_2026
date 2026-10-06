@@ -1,0 +1,39 @@
+{
+  "modules": [
+    {
+      "id": "custom_pid_23f494f5",
+      "name": "Pid",
+      "topic_description": "pid",
+      "is_custom": true,
+      "created_at": "2026-09-10T22:28:40.320023",
+      "sources": [
+        {
+          "title": "(mock mode \u2014 set llm_mode=live for real reference suggestions)",
+          "author": ""
+        }
+      ],
+      "concepts": [
+        {
+          "id": "custom:custom_pid_23f494f5:core-definitions-in-pid",
+          "name": "Core definitions in Pid",
+          "bloom_level": "remember"
+        },
+        {
+          "id": "custom:custom_pid_23f494f5:explaining-pid-in-plain-terms",
+          "name": "Explaining Pid in plain terms",
+          "bloom_level": "understand"
+        },
+        {
+          "id": "custom:custom_pid_23f494f5:applying-pid-to-a-worked-problem",
+          "name": "Applying Pid to a worked problem",
+          "bloom_level": "apply"
+        },
+        {
+          "id": "custom:custom_pid_23f494f5:edge-cases-and-limits-of-pid",
+          "name": "Edge cases and limits of Pid",
+          "bloom_level": "analyse"
+        }
+      ]
+    }
+  ]
+}
