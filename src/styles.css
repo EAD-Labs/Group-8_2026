@@ -373,3 +373,70 @@ button{font:inherit}.app-shell{min-height:100vh;background:var(--background);dis
 .composer-note{display:block;margin-top:8px;color:var(--muted-foreground)}
 .composer-note.error{color:var(--destructive)}
 .custom-modules{display:grid;gap:12px;margin-top:16px}
+
+/* ---- Checkpoint pop-up (blocking, Coursera-style) ---- */
+@keyframes checkpoint-rise{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite}
+.checkpoint-backdrop{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:20px;background:color-mix(in oklab,var(--foreground) 62%,transparent);backdrop-filter:blur(3px)}
+.checkpoint-card{width:min(620px,100%);max-height:88vh;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 28px 70px color-mix(in oklab,var(--foreground) 32%,transparent);animation:checkpoint-rise .22s ease-out}
+.checkpoint-head{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:12px;padding:20px 20px 14px;border-bottom:1px solid var(--border);background:var(--note-soft);border-radius:16px 16px 0 0}
+.checkpoint-head h2{font:600 21px "Source Serif 4",serif;margin:0}
+.checkpoint-head small{display:block;margin-top:3px;color:var(--muted-foreground);font-size:12px;line-height:1.45}
+.checkpoint-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:var(--teacher);color:var(--chalk);white-space:nowrap}
+.checkpoint-badge.transfer{background:var(--advanced);color:var(--foreground)}
+.checkpoint-badge.teach_back{background:var(--basic);color:var(--chalk)}
+.checkpoint-skip{display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:var(--muted-foreground);cursor:pointer}
+.checkpoint-skip:hover{background:var(--muted);color:var(--foreground)}
+.checkpoint-body{padding:20px}
+.checkpoint-concept{margin:0;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-strong)}
+.checkpoint-question{margin:8px 0 16px;font:500 17px/1.5 "Source Serif 4",serif;color:var(--foreground)}
+.checkpoint-input{min-height:120px;font-size:14px;background:var(--background)}
+.checkpoint-options{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.checkpoint-options button{width:100%;display:grid;grid-template-columns:26px 1fr;align-items:center;gap:11px;text-align:left;padding:13px 14px;border:1.5px solid var(--border);border-radius:11px;background:var(--background);cursor:pointer;font-size:13.5px;line-height:1.45;color:var(--foreground);transition:border-color .15s,background .15s}
+.checkpoint-options button:hover{border-color:var(--primary)}
+.checkpoint-options button span{display:grid;place-items:center;width:24px;height:24px;border-radius:7px;background:var(--muted);font-size:11px;font-weight:700}
+.checkpoint-options button.selected{border-color:var(--primary);background:var(--note-soft)}
+.checkpoint-options button.selected span{background:var(--primary);color:var(--primary-foreground)}
+.checkpoint-hint{display:flex;align-items:start;gap:7px;margin:13px 0 0;padding:11px 13px;border-radius:10px;background:var(--note);border:1px dashed var(--note-border);font-size:12.5px;line-height:1.5}
+.checkpoint-result{border-radius:12px;padding:16px;border:1px solid var(--border);background:var(--background)}
+.checkpoint-result.pass{border-color:var(--success);background:var(--success-soft)}
+.checkpoint-score{display:flex;align-items:baseline;gap:6px;margin-bottom:10px}
+.checkpoint-score strong{font:600 38px "Source Serif 4",serif;line-height:1}
+.checkpoint-score small{color:var(--muted-foreground);font-size:13px}
+.checkpoint-score span{margin-left:auto;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:5px 9px;border-radius:999px;background:var(--muted);color:var(--muted-foreground)}
+.checkpoint-result.pass .checkpoint-score span{background:var(--success);color:var(--chalk)}
+.checkpoint-feedback{margin:0 0 11px;font-size:13.5px;line-height:1.6}
+.checkpoint-strengths{list-style:none;margin:0 0 11px;padding:0;display:grid;gap:5px}
+.checkpoint-strengths li{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted-foreground)}
+.checkpoint-strengths svg{color:var(--success);flex:0 0 auto}
+.checkpoint-next{margin:0;font-size:13px;line-height:1.55}
+.checkpoint-next strong{display:block;font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-strong);margin-bottom:3px}
+.checkpoint-source{display:block;margin-top:10px;font-size:10px;color:var(--muted-foreground)}
+.checkpoint-foot{display:flex;justify-content:space-between;gap:10px;padding:14px 20px 18px;border-top:1px solid var(--border)}
+
+/* ---- Evidence-backed report card ---- */
+.metric-row{grid-template-columns:repeat(4,1fr)}
+.metric-row strong small{font-size:17px;color:var(--muted-foreground)}
+.progress-board article .evidence-chips{grid-column:1/-1;display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;margin-top:4px}
+.evidence-chips .chip{flex:0 0 auto}
+.evidence-chips .chip{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 8px;border-radius:999px;background:var(--muted);color:var(--muted-foreground)}
+.evidence-chips .chip.pass{background:var(--success-soft);color:var(--success)}
+.evidence-chips .chip.muted{opacity:.75}
+.progress-board article{grid-template-columns:260px 1fr 50px;row-gap:6px}
+.weak-spots{margin-top:28px}
+.weak-spots h3{display:flex;align-items:center;gap:8px;font:600 19px "Source Serif 4",serif;margin:0 0 14px}
+.weak-spots article{border:1px solid var(--border);border-left:3px solid var(--advanced);border-radius:8px;background:var(--card);padding:14px 16px;margin-bottom:10px}
+.weak-spots strong{display:block;font-size:14px}
+.weak-spots small{display:block;margin:2px 0 6px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-strong)}
+.weak-spots p{margin:0;font-size:12.5px;line-height:1.55;color:var(--muted-foreground)}
+.weak-empty{color:var(--muted-foreground);font-size:13px}
+.empty-material .lucide,.empty-material svg{width:30px;height:30px;margin-bottom:8px}
+.empty-material button{margin-top:14px}
+.transcript-score{display:flex;align-items:baseline;gap:8px;margin:6px 0}
+.transcript-score strong{font:600 26px "Source Serif 4",serif;line-height:1}
+.transcript-score span{font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:999px;background:var(--muted);color:var(--muted-foreground)}
+.transcript-score.pass strong{color:var(--success)}
+.transcript-score.pass span{background:var(--success-soft);color:var(--success)}
+.transcript-response button{margin-top:8px}
+@media(max-width:760px){.metric-row{grid-template-columns:1fr}.checkpoint-card{max-height:92vh}.checkpoint-head{padding:16px 16px 12px}.checkpoint-body{padding:16px}.checkpoint-question{font-size:15.5px}}

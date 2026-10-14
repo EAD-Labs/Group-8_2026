@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ApiGenerateModuleRouteImport } from './routes/api/generate-module'
+import { Route as ApiGradeRouteImport } from './routes/api/grade'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const ApiGenerateModuleRoute = ApiGenerateModuleRouteImport.update({
   path: '/api/generate-module',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGradeRoute = ApiGradeRouteImport.update({
+  id: '/api/grade',
+  path: '/api/grade',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate-module': typeof ApiGenerateModuleRoute
+  '/api/grade': typeof ApiGradeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate-module': typeof ApiGenerateModuleRoute
+  '/api/grade': typeof ApiGradeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate-module': typeof ApiGenerateModuleRoute
+  '/api/grade': typeof ApiGradeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/chat' | '/api/generate-module'
+  fullPaths: '/' | '/api/chat' | '/api/generate-module' | '/api/grade'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/chat' | '/api/generate-module'
-  id: '__root__' | '/' | '/api/chat' | '/api/generate-module'
+  to: '/' | '/api/chat' | '/api/generate-module' | '/api/grade'
+  id: '__root__' | '/' | '/api/chat' | '/api/generate-module' | '/api/grade'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiGenerateModuleRoute: typeof ApiGenerateModuleRoute
+  ApiGradeRoute: typeof ApiGradeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGenerateModuleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/grade': {
+      id: '/api/grade'
+      path: '/api/grade'
+      fullPath: '/api/grade'
+      preLoaderRoute: typeof ApiGradeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiChatRoute: ApiChatRoute,
   ApiGenerateModuleRoute: ApiGenerateModuleRoute,
+  ApiGradeRoute: ApiGradeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
