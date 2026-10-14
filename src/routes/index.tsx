@@ -10,6 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import type { User } from "@supabase/supabase-js";
+import { CheckpointPopup } from "@/components/classroom/CheckpointPopup";
+import { assessmentTypeForStage } from "@/lib/evaluation";
+import { moduleQuizzes, type QuizQuestion } from "@/lib/quizzes";
+import { conceptEvidence, loadAttempts, saveAttempt, summarise, PASS_MARK, type Attempt } from "@/lib/progress";
 
 export const Route = createFileRoute("/")({
   ssr: false,
@@ -26,7 +30,6 @@ export const Route = createFileRoute("/")({
 
 type Panel = "dashboard" | "classroom" | "library" | "progress";
 type Material = { id:string; title:string; file_name:string; status:string; page_count:number|null; extracted_summary:string|null; storage_path:string };
-type MasteryRow = { module_slug:string; concept_slug:string; mastery_score:number };
 function required<T>(value: T | undefined, label: string): T {
   if (value === undefined) throw new Error(`Missing ${label}`);
   return value;
@@ -35,14 +38,16 @@ function required<T>(value: T | undefined, label: string): T {
 function App() {
   const [panel,setPanel]=useState<Panel>("dashboard");
   const [moduleIndex,setModuleIndex]=useState(0); const [conceptIndex,setConceptIndex]=useState(1); const [stageIndex,setStageIndex]=useState(0);
-  const [playing,setPlaying]=useState(false); const [speed,setSpeed]=useState(1); const [response,setResponse]=useState(""); const [attempted,setAttempted]=useState(false);
+  const [playing,setPlaying]=useState(false); const [speed,setSpeed]=useState(1);
   const [question,setQuestion]=useState(""); const [answer,setAnswer]=useState(""); const [asking,setAsking]=useState(false); const [materials,setMaterials]=useState<Material[]>([]);
   const [user,setUser]=useState<User|null>(null); const [uploading,setUploading]=useState(false); const [authOpen,setAuthOpen]=useState(false); const [sourceOpen,setSourceOpen]=useState(false);
-  const [points,setPoints]=useState(0); const [masteryRows,setMasteryRows]=useState<MasteryRow[]>([]);
+  const [points,setPoints]=useState(0);
   const inputRef=useRef<HTMLInputElement>(null); const heroRef=useRef<HTMLButtonElement>(null);
   const [customModules,setCustomModules]=useState<Module[]>([]);
   useEffect(()=>{ try{ setCustomModules(JSON.parse(localStorage.getItem("kyro_custom_modules")||"[]")); }catch{} },[]);
   const modules=[...baseModules,...customModules];
+  const [attempts,setAttempts]=useState<Attempt[]>([]); const [handled,setHandled]=useState<string[]>([]); const [popupOpen,setPopupOpen]=useState(false);
+  useEffect(()=>{ setAttempts(loadAttempts()); },[]);
   const [topic,setTopic]=useState(""); const [attachments,setAttachments]=useState<File[]>([]); const [generating,setGenerating]=useState(false); const [genError,setGenError]=useState(""); const [listening,setListening]=useState<null|"topic"|"question">(null);
   const attachRef=useRef<HTMLInputElement>(null); const recRef=useRef<{stop:()=>void}|null>(null);
   const dictate=(target:"topic"|"question")=>{ if(listening){recRef.current?.stop();return;} const W=window as unknown as Record<string, new()=>any>; const SR=W["SpeechRecognition"]||W["webkitSpeechRecognition"]; if(!SR){setGenError("Voice input isn't supported in this browser. Try Chrome or Edge.");return;} const r=new SR(); r.lang="en-IN"; r.interimResults=true; r.continuous=true; const base=(target==="topic"?topic:question); r.onresult=(e:any)=>{ let t=""; for(let i=0;i<e.results.length;i++) t+=e.results[i][0].transcript; const v=(base?base+" ":"")+t; target==="topic"?setTopic(v):setQuestion(v); }; r.onend=()=>setListening(null); r.onerror=()=>setListening(null); recRef.current=r; setListening(target); r.start(); };
@@ -56,22 +61,40 @@ function App() {
   const stage=required(concept.stages[stageIndex] ?? concept.stages[0], "lesson stage");
 
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>setUser(data.user)); const {data}=supabase.auth.onAuthStateChange((_e,s)=>setUser(s?.user??null)); return ()=>data.subscription.unsubscribe(); },[]);
-  useEffect(()=>{ if(!user){setPoints(0);setMasteryRows([]);return;} supabase.from("profiles").select("points").eq("id",user.id).single().then(({data})=>setPoints(data?.points??0)); supabase.from("concept_mastery").select("module_slug,concept_slug,mastery_score").eq("user_id",user.id).then(({data})=>setMasteryRows(data??[])); },[user]);
+  useEffect(()=>{ if(!user){setPoints(0);return;} supabase.from("profiles").select("points").eq("id",user.id).single().then(({data})=>setPoints(data?.points??0)); },[user]);
   useEffect(()=>{ if(!user) return; supabase.from("learning_materials").select("id,title,file_name,status,page_count,extracted_summary,storage_path").order("created_at",{ascending:false}).then(({data})=>setMaterials(data??[])); },[user]);
   useEffect(()=>{ if(!playing) return; const t=window.setTimeout(()=>setStageIndex(i=>i<concept.stages.length-1?i+1:i), Math.max(3500,9000/speed)); return ()=>window.clearTimeout(t); },[playing,stageIndex,speed,concept.stages.length]);
-  useEffect(()=>{ setAttempted(false); setResponse(""); setAnswer(""); },[stageIndex,conceptIndex,moduleIndex]);
+  useEffect(()=>{ setAnswer(""); },[stageIndex,conceptIndex,moduleIndex]);
+
+  const stageKey=`${module.slug}|${concept.slug}|${stageIndex}`;
+  const assessmentType=assessmentTypeForStage(stage.kind);
+  const quizForConcept:QuizQuestion|null=assessmentType==="checkpoint"?(moduleQuizzes[module.slug]?.questions.find(q=>q.conceptSlug===concept.slug)??null):null;
+  const conceptReference=concept.stages.map(s=>s.text).join(" ");
+  useEffect(()=>{ setPopupOpen(Boolean(assessmentType)&&!handled.includes(stageKey)); },[stageKey,assessmentType,handled]);
+  useEffect(()=>{ if(popupOpen) setPlaying(false); },[popupOpen]);
+
+  const completeCheckpoint=(r:{score:number;feedback:string;strengths:string[];next_step:string;response:string;gradedBy:"ai"|"fallback"})=>{
+    if(!assessmentType) return;
+    const attempt:Attempt={ id:crypto.randomUUID(), moduleSlug:module.slug, conceptSlug:concept.slug, conceptTitle:concept.title, assessmentType, score:r.score, response:r.response, feedback:r.feedback, nextStep:r.next_step, gradedBy:r.gradedBy, at:new Date().toISOString() };
+    setAttempts(saveAttempt(attempt)); setHandled(h=>[...h,stageKey]); setPopupOpen(false);
+    if(user) void supabase.from("evaluation_events").insert({ user_id:user.id, module_slug:module.slug, concept_slug:concept.slug, event_type:`${assessmentType}_graded`, metadata:{ score:r.score, graded_by:r.gradedBy, response:r.response.slice(0,2000) } });
+    setStageIndex(i=>Math.min(concept.stages.length-1,i+1));
+  };
+  const skipCheckpoint=()=>{ setHandled(h=>[...h,stageKey]); setPopupOpen(false); };
+
+  const evidence=conceptEvidence(attempts); const evidenceSummary=summarise(attempts);
+  const evidenceFor=(slug:string)=>evidence.find(e=>e.conceptSlug===slug)??null;
 
   const stageProgress=Math.round(((stageIndex+1)/concept.stages.length)*100);
   const sourceSummary=materials[0]?.extracted_summary ?? "";
   const speakerName=stage.speaker==="teacher"?"Dr Rao":stage.speaker==="maya"?"Maya · foundational learner":"Arjun · probing learner";
   const speak=()=>{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(stage.text); u.rate=stage.speaker==="teacher"?.94:1.02; u.pitch=stage.speaker==="maya"?1.12:.94; speechSynthesis.speak(u); };
-  const submitAttempt=()=>{ if(!response.trim()) return; setAttempted(true); setPlaying(false); };
   const ask=async()=>{ if(!question.trim()||asking) return; setAsking(true); setAnswer(""); try { const r=await fetch("/api/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({question,context:concept.stages.slice(0,stageIndex+1).map(s=>`${s.speaker}: ${s.text}`).join("\n"),source:sourceSummary})}); if(!r.ok){const e=await r.json(); throw new Error(e.message);} const reader=r.body?.getReader(); const decoder=new TextDecoder(); if(reader){while(true){const {done,value}=await reader.read(); if(done)break; setAnswer(a=>a+decoder.decode(value,{stream:true}));}} } catch(e){setAnswer(e instanceof Error?e.message:"The teacher could not answer right now.");} finally{setAsking(false);} };
   const upload=async(file:File)=>{ if(!user){setAuthOpen(true);return;} setUploading(true); const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"-"); const path=`${user.id}/${crypto.randomUUID()}-${safe}`; const {error}=await supabase.storage.from("learning-materials").upload(path,file); if(!error){ const {data}=await supabase.from("learning_materials").insert({user_id:user.id,title:file.name.replace(/\.[^.]+$/,""),file_name:file.name,file_type:file.type||"application/octet-stream",storage_path:path,status:"ready",extracted_summary:`Uploaded course material: ${file.name}. Select it to ground your next classroom session.`}).select("id,title,file_name,status,page_count,extracted_summary,storage_path").single(); if(data)setMaterials(m=>[data,...m]); } setUploading(false); };
   const google=async()=>{await lovable.auth.signInWithOAuth("google",{redirect_uri:window.location.origin});};
   const heroMove=(e:ReactMouseEvent<HTMLButtonElement>)=>{const el=heroRef.current;if(!el)return;const r=el.getBoundingClientRect();el.style.setProperty("--x",`${e.clientX-r.left}px`);el.style.setProperty("--y",`${e.clientY-r.top}px`);};
   const openConcept=(mi:number,ci:number)=>{setModuleIndex(mi);setConceptIndex(ci);setStageIndex(0);setPanel("classroom");};
-  const conceptsStarted=masteryRows.length; const conceptsRetained=masteryRows.filter(r=>r.mastery_score>=100).length; const openDoubts=masteryRows.filter(r=>r.mastery_score<60).length;
+  const conceptsStarted=evidenceSummary.conceptsAttempted; const conceptsRetained=evidenceSummary.conceptsRetained; const openDoubts=evidenceSummary.dueForReview;
   const retainedPct=conceptsStarted?Math.round((conceptsRetained/conceptsStarted)*100):0;
   const firstName=user?.email?.split("@")[0];
   const hour=new Date().getHours(); const dayWord=hour<12?"MORNING":hour<17?"AFTERNOON":"EVENING";
@@ -141,7 +164,7 @@ function App() {
               <div className="module-grid">
                 {modules.map((mod,index)=>{
                   const Icon=mod.slug.includes("thermo")?Beaker:Sigma;
-                  const explored=masteryRows.filter(r=>r.module_slug===mod.slug).length;
+                  const explored=evidence.filter(e=>e.moduleSlug===mod.slug).length;
                   return <article key={mod.slug} className="module-card group">
                     <div className={index%2?"module-visual module-visual-gold":"module-visual module-visual-green"}>
                       <span className="module-badge">{explored>0?"IN PROGRESS":"NEXT UP"}</span>
@@ -210,10 +233,10 @@ function App() {
           <section className="classroom-stage"><div className="scene"><ClassroomScene speaker={stage.speaker} board={stage.board}/><div className="scene-top"><span className="live-dot"><i/> LIVE CLASS</span><span>{concept.title}</span><Button variant="ghost" onClick={()=>setSourceOpen(!sourceOpen)}><FileText/> {materials.length?`${materials.length} sources`:"Course source"}</Button></div><div className="speaker-card"><div className={`speaker-avatar ${stage.speaker}`}>{stage.speaker==="teacher"?<GraduationCap/>:stage.speaker==="maya"?<BookOpen/>:<Brain/>}</div><div><small>{stage.label}</small><strong>{speakerName}</strong><p>{stage.text}</p></div></div>{sourceOpen&&<div className="source-drawer"><div><strong>Sources in this class</strong><Button size="icon" variant="ghost" onClick={()=>setSourceOpen(false)} aria-label="Close sources"><X/></Button></div>{materials.length?materials.map(m=><article key={m.id}><FileText/><div><b>{m.title}</b><small>{m.file_name}</small></div><span>Ready</span></article>):<p>This lesson uses the verified AI KYRO pilot curriculum. Add your own slides to ground the next class.</p>}</div>}</div>
             <div className="transport"><div><Button size="icon" variant="outline" onClick={()=>setStageIndex(i=>Math.max(0,i-1))} aria-label="Previous turn"><ChevronLeft/></Button><Button size="icon" onClick={()=>setPlaying(p=>!p)} aria-label={playing?"Pause":"Play"}>{playing?<Pause/>:<Play/>}</Button><Button size="icon" variant="outline" onClick={()=>setStageIndex(i=>Math.min(concept.stages.length-1,i+1))} aria-label="Next turn"><ChevronRight/></Button></div><div className="timeline"><Progress value={stageProgress}/><small>Class discussion · {stageIndex+1} of {concept.stages.length}</small></div><Button variant="outline" className="speed" onClick={()=>setSpeed(s=>s===1?1.5:s===1.5?2:1)}>{speed}×</Button></div>
           </section>
-          <aside className="class-transcript"><div className="transcript-header"><div><small>CLASS TRANSCRIPT</small><h2>Follow the discussion</h2></div><span><i/> LIVE</span></div><div className="transcript-list">{visibleStages.map((item,i)=><article key={`${item.speaker}-${i}`} className={i===stageIndex?"current":""}><span className={`transcript-avatar ${item.speaker}`}>{item.speaker==="teacher"?<GraduationCap/>:item.speaker==="maya"?<BookOpen/>:<Brain/>}</span><div><header><strong>{item.speaker==="teacher"?"Dr Rao":item.speaker==="maya"?"Maya":"Arjun"}</strong>{i===stageIndex&&<em>speaking</em>}</header><p>{item.text}</p></div></article>)}</div>{stage.prompt&&<div className="transcript-response"><small>YOUR GUESS, BEFORE THE ANSWER</small><p>{stage.prompt}</p><Textarea value={response} onChange={e=>setResponse(e.target.value)} placeholder="Type your reasoning…"/><div><Button variant="ghost" onClick={()=>setAttempted(true)} disabled={!response.trim()}><CircleHelp/>Hint</Button><Button onClick={submitAttempt} disabled={!response.trim()}>Commit</Button></div>{attempted&&<p className="feedback-text">{stage.hint??"State the principle, connect it to this situation, then test your conclusion."}</p>}</div>}</aside>
+          <aside className="class-transcript"><div className="transcript-header"><div><small>CLASS TRANSCRIPT</small><h2>Follow the discussion</h2></div><span><i/> LIVE</span></div><div className="transcript-list">{visibleStages.map((item,i)=><article key={`${item.speaker}-${i}`} className={i===stageIndex?"current":""}><span className={`transcript-avatar ${item.speaker}`}>{item.speaker==="teacher"?<GraduationCap/>:item.speaker==="maya"?<BookOpen/>:<Brain/>}</span><div><header><strong>{item.speaker==="teacher"?"Dr Rao":item.speaker==="maya"?"Maya":"Arjun"}</strong>{i===stageIndex&&<em>speaking</em>}</header><p>{item.text}</p></div></article>)}</div>{assessmentType&&(()=>{const last=[...attempts].reverse().find(a=>a.conceptSlug===concept.slug&&a.assessmentType===assessmentType); return <div className="transcript-response">{last?<><small>CHECKPOINT RECORDED</small><div className={`transcript-score ${last.score>=PASS_MARK?"pass":"work"}`}><strong>{last.score}</strong><span>{last.score>=PASS_MARK?"Passed":"Revisit this"}</span></div><p>{last.feedback}</p><Button variant="outline" onClick={()=>setPopupOpen(true)}>Retake checkpoint</Button></>:<><small>CHECKPOINT WAITING</small><p>{stage.prompt??"Answer the checkpoint to continue."}</p><Button onClick={()=>setPopupOpen(true)}><CircleHelp/>Open checkpoint</Button></>}</div>;})()}</aside>
         </div>
         <div className="question-bar"><Hand/><Textarea value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Raise your hand to ask Dr Rao a question…"/><Button size="icon" variant="ghost" className={listening==="question"?"listening":""} aria-label="Speak question" onClick={()=>dictate("question")}><Mic/></Button><Button size="icon" onClick={ask} disabled={asking||!question.trim()} aria-label="Send question"><Send/></Button></div>{answer&&<div className="teacher-answer"><strong>Dr Rao</strong><p>{answer}</p></div>}
-        <div className="concept-strip">{module.concepts.map((c,i)=><Button variant="ghost" key={c.slug} className={i===conceptIndex?"active":""} onClick={()=>{setConceptIndex(i);setStageIndex(0)}}><span>{i+1}</span><div><strong>{c.title}</strong><small>{c.bloom} · {c.mastery}% mastery</small></div></Button>)}</div>
+        <div className="concept-strip">{module.concepts.map((c,i)=><Button variant="ghost" key={c.slug} className={i===conceptIndex?"active":""} onClick={()=>{setConceptIndex(i);setStageIndex(0)}}><span>{i+1}</span><div><strong>{c.title}</strong><small>{c.bloom} · {evidenceFor(c.slug)?`${evidenceFor(c.slug)?.mastery}% mastery`:"not assessed"}</small></div></Button>)}</div>
       </div>}
 
     {panel==="library"&&<section className="page-view"><div className="page-title"><div><small>PERSONAL KNOWLEDGE BASE</small><h1>Learn from your own material</h1><p>Bring slides, notes, readings or diagrams. AI KYRO turns them into a complete classroom—not a summary.</p></div><input ref={inputRef} hidden type="file" accept=".pdf,.ppt,.pptx,.doc,.docx,.txt,.png,.jpg,.jpeg" onChange={e=>{const f=e.target.files?.[0];if(f)upload(f)}}/></div>
@@ -227,7 +250,26 @@ function App() {
 {customModules.length>0&&<div className="custom-modules">{customModules.map(m=><article key={m.slug} className="material-card"><Brain/><div><small>{m.code} · {m.concepts.length} CONCEPTS</small><h3>{m.title}</h3><p>{m.description}</p></div><Button onClick={()=>{setModuleIndex(modules.findIndex(x=>x.slug===m.slug));setConceptIndex(0);setStageIndex(0);setPanel("classroom")}}>Start class</Button></article>)}</div>}
 </div><div className="material-grid">{materials.map(m=><article key={m.id} className="material-card"><FileText/><div><small>{m.status.toUpperCase()}</small><h3>{m.title}</h3><p>{m.extracted_summary}</p><span>{m.file_name}</span></div><Button onClick={()=>{setPanel("classroom");setSourceOpen(true)}}>Build class</Button></article>)}{!materials.length&&<div className="empty-material"><Library/><h3>Your materials will appear here</h3><p>Sign in and upload a file to create a grounded class.</p></div>}</div></section>}
 
-    {panel==="progress"&&<section className="page-view"><div className="page-title"><div><small>LEARNING EVIDENCE</small><h1>Your understanding, not your streak</h1><p>Mastery grows from explanation, transfer and delayed recall—not from opening a lesson.</p></div></div><div className="metric-row"><div><small>CONCEPTS ACTIVE</small><strong>7</strong><span>across 2 modules</span></div><div><small>READY TO REVIEW</small><strong>3</strong><span>from your doubt log</span></div><div><small>TRANSFER SCORE</small><strong>72%</strong><span>+9 this week</span></div></div><div className="progress-board">{modules.flatMap(m=>m.concepts).filter(c=>c.mastery>0).map(c=><article key={c.slug}><div><strong>{c.title}</strong><span>{c.bloom}</span></div><Progress value={c.mastery}/><b>{c.mastery}%</b></article>)}</div></section>}
+    {panel==="progress"&&<section className="page-view"><div className="page-title"><div><small>LEARNING EVIDENCE</small><h1>Your understanding, not your streak</h1><p>Every number here comes from an answer you were graded on — checkpoints, teach-backs and transfer questions. Nothing counts just for opening a lesson.</p></div></div>
+      <div className="metric-row">
+        <div><small>CONCEPTS ASSESSED</small><strong>{evidenceSummary.conceptsAttempted}</strong><span>{evidenceSummary.totalAttempts} graded answer{evidenceSummary.totalAttempts===1?"":"s"}</span></div>
+        <div><small>CHECKPOINTS PASSED</small><strong>{evidenceSummary.checkpointsPassed}<small>/{evidenceSummary.checkpointsTaken}</small></strong><span>pass mark {PASS_MARK}%</span></div>
+        <div><small>TRANSFER SCORE</small><strong>{evidenceSummary.transferScore===null?"—":`${evidenceSummary.transferScore}%`}</strong><span>{evidenceSummary.transferScore===null?"no transfer question yet":"applying it to new situations"}</span></div>
+        <div><small>READY TO REVIEW</small><strong>{evidenceSummary.dueForReview}</strong><span>below pass mark or going stale</span></div>
+      </div>
+      {evidence.length===0
+        ? <div className="empty-material"><ClipboardCheck/><h3>No evidence yet</h3><p>Open a class and answer a checkpoint. Your scores, weak spots and transfer results will build up here.</p><Button onClick={()=>setPanel("classroom")}>Go to the classroom <ArrowRight size={15}/></Button></div>
+        : <>
+          <div className="progress-board">{evidence.map(e=>{const bloom=modules.flatMap(m=>m.concepts).find(c=>c.slug===e.conceptSlug)?.bloom??""; return <article key={e.conceptSlug}>
+            <div><strong>{e.conceptTitle}</strong><span>{bloom}{e.retained?" · retained":e.dueForReview?" · needs review":""}</span></div>
+            <Progress value={e.mastery}/><b>{e.mastery}%</b>
+            <div className="evidence-chips"><span className={e.checkpointScore!==null&&e.checkpointScore>=PASS_MARK?"chip pass":"chip"}>checkpoint {e.checkpointScore===null?"—":`${e.checkpointScore}%`}</span><span className={e.transferScore!==null&&e.transferScore>=PASS_MARK?"chip pass":"chip"}>transfer {e.transferScore===null?"—":`${e.transferScore}%`}</span><span className="chip muted">{e.attempts} attempt{e.attempts===1?"":"s"}</span></div>
+          </article>;})}</div>
+          <div className="weak-spots"><h3><Target size={16}/> Where the thinking broke down</h3>{evidence.filter(e=>e.weakest&&e.weakest.score<PASS_MARK).slice(0,4).map(e=><article key={e.conceptSlug}><strong>{e.conceptTitle}</strong><small>{e.weakest?.assessmentType.replace("_"," ")} · {e.weakest?.score}%</small><p>{e.weakest?.nextStep}</p></article>)}{evidence.every(e=>!e.weakest||e.weakest.score>=PASS_MARK)&&<p className="weak-empty">Nothing below the pass mark yet. Try a transfer question to stress-test it.</p>}</div>
+        </>}
+    </section>}
+
+      {popupOpen&&assessmentType&&panel==="classroom"&&<CheckpointPopup assessmentType={assessmentType} conceptTitle={concept.title} prompt={stage.prompt??`Explain ${concept.title} in your own words.`} hint={stage.hint??"State the principle, connect it to this situation, then test your conclusion."} reference={conceptReference} quiz={quizForConcept} onComplete={completeCheckpoint} onSkip={skipCheckpoint}/>}
 
       {authOpen&&<div className="modal-backdrop"><div className="auth-dialog"><Button size="icon" variant="ghost" className="modal-close" onClick={()=>setAuthOpen(false)}><X/></Button><span className="brand-mark">AK</span><h2>Keep your learning with you</h2><p>Sign in to save materials, sessions, mastery and review schedules across devices.</p><Button className="google" onClick={google}>Continue with Google</Button><small>Your uploads remain private to your account.</small></div></div>}
     </div>
