@@ -1,6 +1,6 @@
 # Immersive Learning Hub
 
-this was my project and i have attached what i made through claude.. https://classroom-reality-engine.lovable.app.. i also used lovable and made this.. however both of them are not sufficient, i have attached the hld.. optimize and work on this.. the classroom should feel realistic.. 3d ,moving, etc., the modules should not just be abt definitions but should cover all the content..there shoukld be an ioption where i can attach my own class slides/material to learn along with the ai... work on this
+this was my project and i have attached what i made through claude..https://learning-space-3d.lovable.app.. i also used lovable and made this.. however both of them are not sufficient, i have attached the hld.. optimize and work on this.. the classroom should feel realistic.. 3d ,moving, etc., the modules should not just be abt definitions but should cover all the content..there shoukld be an ioption where i can attach my own class slides/material to learn along with the ai... work on this
 
 This project was built with [Lovable](https://lovable.dev).
 
