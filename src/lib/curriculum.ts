@@ -1,5 +1,24 @@
+import { trFor, type Key, type LangCode } from "@/lib/i18n";
+
 export type LessonStage = {
-  kind: "question" | "explain" | "example" | "challenge" | "predict" | "checkpoint" | "teachback" | "transfer";
+  kind:
+    | "question"
+    | "explain"
+    | "example"
+    | "challenge"
+    | "predict"
+    | "checkpoint"
+    | "teachback"
+    | "transfer"
+    // HLD classroom turns
+    | "ask"
+    | "blank"
+    | "hint"
+    | "recall"
+    | "mcq"
+    | "doubt"
+    | "bridge"
+    | "checkin";
   speaker: "teacher" | "maya" | "arjun";
   label: string;
   text: string;
@@ -7,37 +26,183 @@ export type LessonStage = {
   prompt?: string;
   hint?: string;
   source?: string;
+  /** unique id of this turn within its dialogue */
+  id?: string;
+  /** verified-record claims this turn draws on (so checkpoints derive from the dialogue) */
+  claimIds?: string[];
+  /** fill-in-the-blank: the dialogue does not continue until it is attempted */
+  blank?: {
+    id: string;
+    before: string;
+    answer: string;
+    after: string;
+    accept: string[];
+    misconceptionId?: string;
+  };
+  /** hint card: the answer stays hidden until a guess is committed */
+  hintCard?: {
+    id: string;
+    question: string;
+    hint: string;
+    answer: string;
+    accept: string[];
+    misconceptionId?: string;
+  };
+  /** for "recall" turns: the earlier concept being re-tested in context */
+  recallKey?: string;
+  /** quick check: a multiple-choice question (including fill-in-the-blank with choices) that pops up in the class */
+  mcq?: {
+    id: string;
+    prompt: string;
+    context?: string;
+    options: string[];
+    answer: number;
+    explanation: string;
+    qkind: string;
+  };
+  misconceptionId?: string;
+  /** "doubt" / "bridge" turns: the learner's own question this turn answers or comes back to */
+  asked?: string;
+  /** a live turn whose text is still being written */
+  pending?: boolean;
+  /** the answer came from the verified notes because the AI could not be reached */
+  viaNotes?: boolean;
+  /** a turn of the full lesson: which board section and block it reads (the board shows the section) */
+  deep?: { section: number; block: number; kind: string };
+  /** "checkin" turns: which one-question-at-a-time check-in this is */
+  checkin?: { phase: "before" | "during" | "after" };
 };
 
-export type Concept = { slug: string; title: string; bloom: string; duration: number; mastery: number; stages: LessonStage[] };
-export type Module = { slug: string; code: string; title: string; description: string; concepts: Concept[] };
+export type Concept = {
+  /** content this concept was built from (stored for custom modules so they can be translated) */
+  src?: ArcSource;
+  slug: string;
+  title: string;
+  bloom: string;
+  duration: number;
+  mastery: number;
+  stages: LessonStage[];
+};
+export type Module = {
+  /** language the content is written in (default English) */
+  lang?: LangCode;
+  slug: string;
+  code: string;
+  title: string;
+  description: string;
+  concepts: Concept[];
+};
 
-export const arc = (title: string, definition: string, misconception: string, example: string, equation: string, transfer: string): LessonStage[] => [
-  { kind: "question", speaker: "teacher", label: "Prior knowledge", text: `Before we begin ${title}, what do you already believe is true here?`, board: title, prompt: "Commit a first thought before the discussion moves on.", hint: "A rough idea is enough; we are measuring change, not perfection." },
-  { kind: "explain", speaker: "teacher", label: "Core idea", text: definition, board: equation },
-  { kind: "example", speaker: "maya", label: "Worked example", text: `Can we make that concrete? ${example}`, board: equation },
-  { kind: "challenge", speaker: "arjun", label: "Misconception check", text: `I want to challenge a common shortcut: ${misconception}`, board: `Test the boundary → ${misconception}` },
-  { kind: "predict", speaker: "teacher", label: "Your prediction", text: "Pause the room. Predict the outcome before we reveal the reasoning.", board: "Predict → justify → test", prompt: "What happens, and why?", hint: "Name the system boundary first, then follow the quantity being tracked." },
-  { kind: "checkpoint", speaker: "teacher", label: "Checkpoint", text: `Explain ${title} in your own words and use the example to justify it.`, board: "Claim + mechanism + evidence", prompt: "Write a two-sentence explanation." },
-  { kind: "teachback", speaker: "maya", label: "Teach Maya", text: "Pretend I missed the class. Teach the idea back to me without repeating the definition word-for-word.", board: "Teach-back: simplify without losing accuracy", prompt: "Type or speak your explanation." },
-  { kind: "transfer", speaker: "arjun", label: "Transfer", text: transfer, board: "New situation — same principle", prompt: "Solve it and explain which principle transfers." },
-];
+/** The raw lesson content a concept was built from — kept so it can be rebuilt in another language. */
+export type ArcSource = {
+  /** short phrase used inside sentences ("energy accounting") */
+  title: string;
+  definition: string;
+  misconception: string;
+  example: string;
+  equation: string;
+  transfer: string;
+};
 
-export const modules: Module[] = [
-  { slug: "thermodynamics", code: "ME 201", title: "Thermodynamics", description: "Track energy, entropy, direction and system boundaries across realistic engineering situations.", concepts: [
-    { slug: "first-law", title: "First law & energy accounting", bloom: "Apply", duration: 14, mastery: 68, stages: arc("energy accounting", "Energy is conserved, but useful bookkeeping begins by naming the system and assigning consistent directions to heat and work.", "heat and work are not properties stored inside a system", "For a piston, energy crossing as heat can become boundary work or change internal energy; the balance depends on the chosen boundary.", "ΔU = Q − W", "A battery drives a motor that lifts a mass while warming. Draw the boundary and account for every energy transfer.") },
-    { slug: "second-law", title: "Second law & entropy", bloom: "Understand", duration: 16, mastery: 54, stages: arc("the second law", "The second law constrains which energy transformations can happen spontaneously: total entropy of an isolated system cannot decrease.", "entropy is not simply disorder; it counts how energy spreads among accessible states", "Hot coffee cools because energy disperses into the room, not because energy disappears.", "ΔS_universe ≥ 0", "A refrigerator moves heat from cold to hot. Explain why this does not violate the second law.") },
-    { slug: "sign-conventions", title: "Sign conventions", bloom: "Apply", duration: 12, mastery: 31, stages: arc("heat and work signs", "Signs encode direction relative to the chosen system; they are conventions that must remain internally consistent.", "memorizing a sign without stating the convention makes a correct formula produce a wrong result", "With ΔU = Q − W, expansion work done by the system is positive W and reduces internal energy.", "ΔU = Q − W", "A gas is compressed while losing heat. Determine the signs first, then reason about ΔU.") },
-    { slug: "reversibility", title: "Reversible vs irreversible", bloom: "Analyse", duration: 15, mastery: 22, stages: arc("reversibility", "A reversible process is an ideal limiting path that can be reversed by an infinitesimal change while leaving no net change in system and surroundings.", "reversible does not mean a real process can merely be played backward", "Free expansion can return to its initial volume mechanically, but the surroundings cannot be restored without other changes.", "S_gen = 0 reversible; S_gen > 0 irreversible", "Compare slow piston expansion with free expansion and locate entropy generation.") },
-    { slug: "entropy-universe", title: "Entropy of the universe", bloom: "Analyse", duration: 15, mastery: 0, stages: arc("entropy of the universe", "A spontaneous process may lower a system’s entropy only if the surroundings gain more, keeping the universe total non-decreasing.", "looking only at the system can falsely label a spontaneous process impossible", "Freezing water lowers the water’s entropy while released heat raises the surroundings’ entropy by a larger amount below the freezing point.", "ΔS_univ = ΔS_sys + ΔS_surr", "Analyse crystallisation in a supercooled liquid using both system and surroundings.") },
-  ]},
-  { slug: "probability", code: "DS 203", title: "Probability & Statistics", description: "Reason under uncertainty, distinguish dependence, and interpret evidence without causal shortcuts.", concepts: [
-    { slug: "conditional", title: "Conditional probability", bloom: "Apply", duration: 13, mastery: 76, stages: arc("conditional probability", "Conditional probability updates the reference population after learning that another event occurred.", "P(A|B) and P(B|A) answer different questions", "Among students who submitted, ask what fraction passed—not what fraction of passers submitted.", "P(A|B)=P(A∩B)/P(B)", "Interpret a medical test result by explicitly changing the reference group.") },
-    { slug: "bayes", title: "Bayes’ theorem", bloom: "Analyse", duration: 17, mastery: 42, stages: arc("Bayes’ theorem", "Bayes combines prior plausibility with evidence likelihood to update a belief.", "a highly accurate test can still have a low positive predictive value when prevalence is tiny", "Compare 99% sensitivity with a 1% base rate using natural frequencies out of 10,000 people.", "P(A|B)=P(B|A)P(A)/P(B)", "Evaluate a rare-defect alarm in a factory where false positives outnumber defects.") },
-    { slug: "independence", title: "Independence", bloom: "Analyse", duration: 12, mastery: 0, stages: arc("independence", "Events are independent when learning one does not change the probability of the other.", "mutually exclusive events with positive probability are not independent", "Two coin tosses are independent; drawing two cards without replacement is not.", "P(A∩B)=P(A)P(B)", "Decide whether failures in two redundant sensors are independent when both share a power supply.") },
-    { slug: "expectation", title: "Random variables & expectation", bloom: "Apply", duration: 14, mastery: 0, stages: arc("expectation", "Expectation is a probability-weighted long-run average, not necessarily a value any single trial can take.", "an expected value of 2.5 children does not predict a fractional family", "A fair die has expectation 3.5 although 3.5 never appears.", "E[X]=Σx·P(X=x)", "Compare two maintenance plans by expected annual cost and explain what the average hides.") },
-    { slug: "sampling", title: "Sampling distributions", bloom: "Understand", duration: 16, mastery: 0, stages: arc("sampling distributions", "A sampling distribution describes how a statistic varies across repeated samples from the same population.", "the data distribution and the distribution of the sample mean are different objects", "Individual wait times may be skewed while means of large samples become more nearly normal.", "SE(x̄)=σ/√n", "Predict how quadrupling sample size changes uncertainty in a mean estimate.") },
-    { slug: "confidence", title: "Confidence intervals", bloom: "Analyse", duration: 16, mastery: 0, stages: arc("confidence intervals", "A confidence procedure captures the fixed population parameter at its stated rate over repeated samples.", "a 95% interval does not mean a 95% probability that this fixed interval contains the parameter", "Repeat the study many times: roughly 95% of intervals from a valid procedure cover the true value.", "estimate ± critical value × SE", "Explain what happens to interval width when sample size increases and confidence level stays fixed.") },
-    { slug: "correlation", title: "Correlation vs causation", bloom: "Analyse", duration: 15, mastery: 0, stages: arc("correlation and causation", "Association describes co-variation; causal claims require ruling out confounding, reverse causation and selection effects.", "a regression coefficient is not automatically the effect of changing its predictor", "Ice-cream sales and drowning both rise with temperature; neither causes the other.", "association ≠ intervention effect", "A study links study-app use with grades. Name two alternative explanations and design stronger evidence.") },
-  ]},
-];
+const ARC_SOURCE = new WeakMap<object, ArcSource>();
+/** The content an `arc()` result was built from (built-in lessons; custom ones also store `src`). */
+/** Register the content a hand-built stage list came from (so rubric grading and quizzes can find it). */
+export const registerSource = (stages: LessonStage[], src: ArcSource) =>
+  void ARC_SOURCE.set(stages, src);
+export const sourceOf = (stages: LessonStage[]): ArcSource | undefined => ARC_SOURCE.get(stages);
+
+/**
+ * The content a concept was built from. Built-in lessons are looked up from their `arc()` call;
+ * custom lessons store it in `src`; very old saved lessons are reconstructed from the English text.
+ */
+export function conceptSource(c: { stages: LessonStage[]; src?: ArcSource }): ArcSource {
+  const known = c.src ?? sourceOf(c.stages);
+  if (known) return known;
+  const by = (k: LessonStage["kind"]) => c.stages.find((x) => x.kind === k);
+  const strip = (text: string | undefined, key: Key, v: Record<string, string>) => {
+    const prefix = trFor("en", key, v).replace(/\s+$/, "");
+    return (text ?? "").startsWith(prefix)
+      ? (text ?? "").slice(prefix.length).trim()
+      : (text ?? "").trim();
+  };
+  return {
+    title: by("question")?.board ?? "",
+    definition: by("explain")?.text ?? "",
+    example: strip(by("example")?.text, "arc.ex.text", { example: "" }),
+    misconception: strip(by("challenge")?.text, "arc.ch.text", { misconception: "" }),
+    equation: by("explain")?.board ?? "",
+    transfer: by("transfer")?.text ?? "",
+  };
+}
+
+export const arc = (
+  title: string,
+  definition: string,
+  misconception: string,
+  example: string,
+  equation: string,
+  transfer: string,
+  lang: LangCode = "en",
+): LessonStage[] => {
+  const T = (k: Key, v?: Record<string, string | number>) => trFor(lang, k, v);
+  // Opens on the core idea. The prior-knowledge question that used to come first was removed:
+  // it asked the learner to commit a belief before anything had been taught.
+  const stages: LessonStage[] = [
+    {
+      kind: "explain",
+      speaker: "teacher",
+      label: T("arc.label.core"),
+      text: definition,
+      board: equation,
+    },
+    {
+      kind: "example",
+      speaker: "maya",
+      label: T("arc.label.example"),
+      text: T("arc.ex.text", { example }),
+      board: equation,
+    },
+    {
+      kind: "challenge",
+      speaker: "arjun",
+      label: T("arc.label.misconception"),
+      text: T("arc.ch.text", { misconception }),
+      board: T("arc.ch.board", { misconception }),
+    },
+    {
+      kind: "predict",
+      speaker: "teacher",
+      label: T("arc.label.predict"),
+      text: T("arc.pr.text"),
+      board: T("arc.pr.board"),
+      prompt: T("arc.pr.prompt"),
+      hint: T("arc.pr.hint"),
+    },
+    {
+      kind: "checkpoint",
+      speaker: "teacher",
+      label: T("arc.label.checkpoint"),
+      text: T("arc.cp.text", { title }),
+      board: T("arc.cp.board"),
+      prompt: T("arc.cp.prompt"),
+    },
+    {
+      kind: "teachback",
+      speaker: "maya",
+      label: T("arc.label.teachback"),
+      text: T("arc.tb.text"),
+      board: T("arc.tb.board"),
+      prompt: T("arc.tb.prompt"),
+    },
+    {
+      kind: "transfer",
+      speaker: "arjun",
+      label: T("arc.label.transfer"),
+      text: transfer,
+      board: T("arc.tr.board"),
+      prompt: T("arc.tr.prompt"),
+    },
+  ];
+  ARC_SOURCE.set(stages, { title, definition, misconception, example, equation, transfer });
+  return stages;
+};

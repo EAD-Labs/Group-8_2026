@@ -1,0 +1,9 @@
+Photosynthesis and cellular respiration
+
+Photosynthesis is the process by which plants convert light energy into chemical energy stored in glucose. It takes place in the chloroplasts, where chlorophyll absorbs sunlight. The light reactions split water and release oxygen, while the Calvin cycle uses carbon dioxide to build sugar molecules.
+
+Cellular respiration releases the energy stored in glucose so that cells can do work. It happens in the mitochondria and produces ATP, carbon dioxide and water. Respiration is therefore roughly the reverse of photosynthesis in terms of the molecules it uses and produces.
+
+ATP is the energy currency of the cell. When ATP is broken down into ADP and phosphate, energy is released that powers muscle contraction, active transport and the building of new molecules.
+
+Enzymes are biological catalysts. They lower the activation energy of reactions, which lets metabolism run quickly at body temperature. Each enzyme has an active site that fits a specific substrate, and extreme heat or pH can denature it.

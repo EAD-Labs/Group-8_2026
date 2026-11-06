@@ -10,12 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiAssessRouteImport } from './routes/api/assess'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ApiGenerateModuleRouteImport } from './routes/api/generate-module'
+import { Route as ApiReadPageRouteImport } from './routes/api/read-page'
+import { Route as ApiStatusRouteImport } from './routes/api/status'
+import { Route as ApiTeachRouteImport } from './routes/api/teach'
+import { Route as ApiTranslateModuleRouteImport } from './routes/api/translate-module'
+import { Route as ApiTranslateUiRouteImport } from './routes/api/translate-ui'
+import { Route as ApiVerifyRouteImport } from './routes/api/verify'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAssessRoute = ApiAssessRouteImport.update({
+  id: '/api/assess',
+  path: '/api/assess',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChatRoute = ApiChatRouteImport.update({
@@ -28,35 +40,124 @@ const ApiGenerateModuleRoute = ApiGenerateModuleRouteImport.update({
   path: '/api/generate-module',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiReadPageRoute = ApiReadPageRouteImport.update({
+  id: '/api/read-page',
+  path: '/api/read-page',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStatusRoute = ApiStatusRouteImport.update({
+  id: '/api/status',
+  path: '/api/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTeachRoute = ApiTeachRouteImport.update({
+  id: '/api/teach',
+  path: '/api/teach',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTranslateModuleRoute = ApiTranslateModuleRouteImport.update({
+  id: '/api/translate-module',
+  path: '/api/translate-module',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTranslateUiRoute = ApiTranslateUiRouteImport.update({
+  id: '/api/translate-ui',
+  path: '/api/translate-ui',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiVerifyRoute = ApiVerifyRouteImport.update({
+  id: '/api/verify',
+  path: '/api/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/assess': typeof ApiAssessRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate-module': typeof ApiGenerateModuleRoute
+  '/api/read-page': typeof ApiReadPageRoute
+  '/api/status': typeof ApiStatusRoute
+  '/api/teach': typeof ApiTeachRoute
+  '/api/translate-module': typeof ApiTranslateModuleRoute
+  '/api/translate-ui': typeof ApiTranslateUiRoute
+  '/api/verify': typeof ApiVerifyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/assess': typeof ApiAssessRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate-module': typeof ApiGenerateModuleRoute
+  '/api/read-page': typeof ApiReadPageRoute
+  '/api/status': typeof ApiStatusRoute
+  '/api/teach': typeof ApiTeachRoute
+  '/api/translate-module': typeof ApiTranslateModuleRoute
+  '/api/translate-ui': typeof ApiTranslateUiRoute
+  '/api/verify': typeof ApiVerifyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/assess': typeof ApiAssessRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate-module': typeof ApiGenerateModuleRoute
+  '/api/read-page': typeof ApiReadPageRoute
+  '/api/status': typeof ApiStatusRoute
+  '/api/teach': typeof ApiTeachRoute
+  '/api/translate-module': typeof ApiTranslateModuleRoute
+  '/api/translate-ui': typeof ApiTranslateUiRoute
+  '/api/verify': typeof ApiVerifyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/chat' | '/api/generate-module'
+  fullPaths:
+    | '/'
+    | '/api/assess'
+    | '/api/chat'
+    | '/api/generate-module'
+    | '/api/read-page'
+    | '/api/status'
+    | '/api/teach'
+    | '/api/translate-module'
+    | '/api/translate-ui'
+    | '/api/verify'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/chat' | '/api/generate-module'
-  id: '__root__' | '/' | '/api/chat' | '/api/generate-module'
+  to:
+    | '/'
+    | '/api/assess'
+    | '/api/chat'
+    | '/api/generate-module'
+    | '/api/read-page'
+    | '/api/status'
+    | '/api/teach'
+    | '/api/translate-module'
+    | '/api/translate-ui'
+    | '/api/verify'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/assess'
+    | '/api/chat'
+    | '/api/generate-module'
+    | '/api/read-page'
+    | '/api/status'
+    | '/api/teach'
+    | '/api/translate-module'
+    | '/api/translate-ui'
+    | '/api/verify'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiAssessRoute: typeof ApiAssessRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiGenerateModuleRoute: typeof ApiGenerateModuleRoute
+  ApiReadPageRoute: typeof ApiReadPageRoute
+  ApiStatusRoute: typeof ApiStatusRoute
+  ApiTeachRoute: typeof ApiTeachRoute
+  ApiTranslateModuleRoute: typeof ApiTranslateModuleRoute
+  ApiTranslateUiRoute: typeof ApiTranslateUiRoute
+  ApiVerifyRoute: typeof ApiVerifyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -66,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/assess': {
+      id: '/api/assess'
+      path: '/api/assess'
+      fullPath: '/api/assess'
+      preLoaderRoute: typeof ApiAssessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/chat': {
@@ -82,13 +190,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGenerateModuleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/read-page': {
+      id: '/api/read-page'
+      path: '/api/read-page'
+      fullPath: '/api/read-page'
+      preLoaderRoute: typeof ApiReadPageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/status': {
+      id: '/api/status'
+      path: '/api/status'
+      fullPath: '/api/status'
+      preLoaderRoute: typeof ApiStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/teach': {
+      id: '/api/teach'
+      path: '/api/teach'
+      fullPath: '/api/teach'
+      preLoaderRoute: typeof ApiTeachRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/translate-module': {
+      id: '/api/translate-module'
+      path: '/api/translate-module'
+      fullPath: '/api/translate-module'
+      preLoaderRoute: typeof ApiTranslateModuleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/translate-ui': {
+      id: '/api/translate-ui'
+      path: '/api/translate-ui'
+      fullPath: '/api/translate-ui'
+      preLoaderRoute: typeof ApiTranslateUiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/verify': {
+      id: '/api/verify'
+      path: '/api/verify'
+      fullPath: '/api/verify'
+      preLoaderRoute: typeof ApiVerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiAssessRoute: ApiAssessRoute,
   ApiChatRoute: ApiChatRoute,
   ApiGenerateModuleRoute: ApiGenerateModuleRoute,
+  ApiReadPageRoute: ApiReadPageRoute,
+  ApiStatusRoute: ApiStatusRoute,
+  ApiTeachRoute: ApiTeachRoute,
+  ApiTranslateModuleRoute: ApiTranslateModuleRoute,
+  ApiTranslateUiRoute: ApiTranslateUiRoute,
+  ApiVerifyRoute: ApiVerifyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
