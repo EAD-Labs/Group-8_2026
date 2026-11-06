@@ -1,6 +1,6 @@
 # AI KYRO — Learn to Think, Not Just Get Answers
 
-[**View the AI KYRO Project Introduction**](https://ai-kyro-landing.vercel.app/)
+Link to Webpage: [**View the AI KYRO Project Introduction**](https://ai-kyro-landing.vercel.app/)
 
 AI KYRO is an AI-supported learning platform designed to make students active participants in their own learning. Instead of simply providing answers, it guides learners through explanations, questions, hints, practice and reflection to help them build lasting understanding.
 
