@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/34491196/README.md)
 # AI KYRO — Learn to Think, Not Just Get Answers
 
 [**View the AI KYRO Project Introduction**](https://ai-kyro-landing.vercel.app/)
